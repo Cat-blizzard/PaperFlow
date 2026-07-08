@@ -1267,7 +1267,7 @@ def test_desktop_save_settings_updates_env_file(tmp_path, monkeypatch: pytest.Mo
     assert result["paths"]["reading_reports_dir"] == str(tmp_path / "Daily Note")
     assert result["paths"]["wiki_dir"] == str(tmp_path / "Daily Note" / "wiki")
     assert result["paths"]["reading_notes_git_dir"] == str(tmp_path / "Daily Note" / "Daily Note 2026")
-    assert result["paths"]["reading_notes_git_remote"] == "https://github.com/example/notes.git"
+    assert result["paths"]["reading_notes_git_remote"] == "git@github.com:example/notes.git"
     assert result["paths"]["reading_notes_git_branch"] == "main"
     assert result["paths"]["reading_notes_git_llm_review"] is False
     assert "PAPERFLOW_CONFERENCE_ACCESS_MODE=credential" in text
@@ -1287,6 +1287,15 @@ def test_desktop_save_settings_updates_env_file(tmp_path, monkeypatch: pytest.Mo
     assert result["advanced"]["http_proxy"] == "http://127.0.0.1:18080"
     assert result["source_preferences"]["conference_access_mode"] == "credential"
     assert result["source_preferences"]["auth_status"]["semantic_scholar_api_key"] is True
+
+
+def test_desktop_normalizes_plain_github_notes_remote_to_ssh(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text("PAPERFLOW_READING_NOTES_GIT_REMOTE=https://github.com/example/notes\n", encoding="utf-8")
+    monkeypatch.setattr(agents, "ENV_PATH", env_path)
+    monkeypatch.delenv("PAPERFLOW_READING_NOTES_GIT_REMOTE", raising=False)
+
+    assert agents._configured_reading_notes_git_remote() == "git@github.com:example/notes.git"
 
 
 def test_desktop_settings_preserves_zero_relevance_threshold(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:

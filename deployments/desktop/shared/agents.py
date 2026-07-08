@@ -850,8 +850,18 @@ def _configured_reading_notes_git_branch() -> str:
     return _env_text("PAPERFLOW_READING_NOTES_GIT_BRANCH", "main") or "main"
 
 
+def _normalize_reading_notes_git_remote(remote_url: str) -> str:
+    """Prefer SSH for plain GitHub remotes so GUI sync can use the user's SSH key."""
+    remote = str(remote_url or "").strip()
+    match = re.fullmatch(r"https://github\.com/([^/\s]+)/([^/\s]+?)(?:\.git)?/?", remote)
+    if not match:
+        return remote
+    owner, repo = match.groups()
+    return f"git@github.com:{owner}/{repo}.git"
+
+
 def _configured_reading_notes_git_remote() -> str:
-    return _env_text("PAPERFLOW_READING_NOTES_GIT_REMOTE", "")
+    return _normalize_reading_notes_git_remote(_env_text("PAPERFLOW_READING_NOTES_GIT_REMOTE", ""))
 
 
 def _default_reading_notes_git_dir() -> Optional[Path]:
