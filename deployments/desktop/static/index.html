@@ -16,11 +16,7 @@
         </div>
 
         <nav class="rail-nav" aria-label="主要功能">
-          <button class="rail-item active" data-view="papers" type="button" title="论文流">
-            <span class="rail-icon" aria-hidden="true">▤</span>
-            <span>论文流</span>
-          </button>
-          <button class="rail-item" data-view="paperdaily" type="button" title="PaperDaily">
+          <button class="rail-item active" data-view="paperdaily" type="button" title="PaperDaily">
             <span class="rail-icon" aria-hidden="true">◫</span>
             <span>PaperDaily</span>
           </button>
@@ -68,7 +64,7 @@
           </div>
         </header>
 
-        <section id="papers" class="view active" data-title="论文推荐" data-kicker="Today's Papers">
+        <section id="papers" class="view" data-title="论文推荐" data-kicker="Today's Papers">
           <div class="recommend-layout">
             <div class="paper-main">
               <div class="control-strip">
@@ -93,35 +89,21 @@
               <div class="source-config">
                 <div class="source-toolbar">
                   <div>
-                    <strong>论文来源</strong>
-                    <span>离线版可组合 arXiv、会议、期刊与自定义 RSS。</span>
+                    <strong>arXiv 分类</strong>
+                    <span>仅使用 arXiv 公开索引；研究话题、关键词和语义排序在 PaperDaily 中管理。</span>
                   </div>
                   <div class="button-row">
                     <button id="selectAllSourcesBtn" type="button">全选</button>
                     <button id="clearSourcesBtn" type="button">清空</button>
                   </div>
                 </div>
-                <div class="source-grid">
+                <div class="source-grid arxiv-only-source-grid">
                   <div class="source-group">
                     <div class="source-head">
                       <strong>arXiv</strong>
                       <button class="mini-button" data-source-toggle="arxivCategories" type="button">切换</button>
                     </div>
                     <div id="arxivCategories" class="choice-list empty">正在加载分类</div>
-                  </div>
-                  <div class="source-group">
-                    <div class="source-head">
-                      <strong>会议</strong>
-                      <button class="mini-button" data-source-toggle="conferenceSources" type="button">切换</button>
-                    </div>
-                    <div id="conferenceSources" class="choice-list empty">正在加载会议</div>
-                  </div>
-                  <div class="source-group">
-                    <div class="source-head">
-                      <strong>期刊</strong>
-                      <button class="mini-button" data-source-toggle="journalSources" type="button">切换</button>
-                    </div>
-                    <div id="journalSources" class="choice-list empty">正在加载期刊</div>
                   </div>
                 </div>
               </div>
@@ -426,7 +408,7 @@
               <pre id="providerTestOutput" class="answer empty">尚未运行提供商测试。</pre>
             </section>
 
-            <section class="setting-card settings-source">
+            <section class="setting-card settings-source" hidden>
               <div class="setting-card-head">
                 <span>3</span>
                 <h2>论文来源</h2>

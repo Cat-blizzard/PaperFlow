@@ -2035,15 +2035,22 @@ def test_desktop_source_settings_explain_conference_auth() -> None:
 
 
 def test_desktop_paper_source_defaults_are_arxiv_only() -> None:
+    html = (PROJECT_ROOT / "deployments/desktop/static/index.html").read_text(encoding="utf-8")
     script = (PROJECT_ROOT / "deployments/desktop/static/desktop.js").read_text(encoding="utf-8")
     collect_daily_options = script.split("function collectDailyOptions() {", 1)[1].split("function paperReportKey", 1)[0]
 
+    assert 'data-view="papers"' not in html
+    assert 'id="conferenceSources"' not in html
+    assert 'id="journalSources"' not in html
+    assert 'class="setting-card settings-source" hidden' in html
     assert 'renderChoiceList("arxivCategories", data.arxiv_categories || [], { defaultChecked: "all" })' in script
-    assert 'renderChoiceList("conferenceSources", data.conferences || [], { defaultChecked: "none" })' in script
-    assert 'renderChoiceList("journalSources", data.journals || [], { defaultChecked: "none" })' in script
-    assert 'const conferences = openReviewEnabled ? selectedSourceValues("conferenceSources") : [];' in collect_daily_options
-    assert 'selectedSourceValues("conferenceSources").length' not in collect_daily_options
+    assert 'renderChoiceList("conferenceSources"' not in script
+    assert 'renderChoiceList("journalSources"' not in script
+    assert "conferences: []" in collect_daily_options
+    assert "journals: []" in collect_daily_options
     assert "selectedSettingConferences()" not in collect_daily_options
+    assert 'if (name === "papers") name = "paperdaily";' in script
+    assert 'window.location.hash.slice(1) || "paperdaily"' in script
 
 
 def test_desktop_paper_cards_show_arxiv_category_tags() -> None:

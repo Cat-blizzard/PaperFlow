@@ -2107,6 +2107,7 @@
   }
 
   function setView(name, updateHash = true, options = {}) {
+    if (name === "papers") name = "paperdaily";
     state.currentView = name;
     document.body.classList.toggle("chat-view", name === "chat");
     document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === name));
@@ -2512,6 +2513,7 @@
 
   function renderChoiceList(id, items, options = {}) {
     const target = $(id);
+    if (!target) return;
     target.className = "choice-list";
     const defaultChecked = options.defaultChecked || "none";
     target.innerHTML = items.map((item, index) => {
@@ -2527,8 +2529,6 @@
     const data = await api("/api/source-options");
     state.sourceOptions = data;
     renderChoiceList("arxivCategories", data.arxiv_categories || [], { defaultChecked: "all" });
-    renderChoiceList("conferenceSources", data.conferences || [], { defaultChecked: "none" });
-    renderChoiceList("journalSources", data.journals || [], { defaultChecked: "none" });
     state.sourceOptionsLoaded = true;
   }
 
@@ -2590,13 +2590,11 @@
   function collectDailyOptions() {
     const sourcePrefs = state.settings?.source_preferences || {};
     const arxivEnabled = $("settingEnableArxiv") ? $("settingEnableArxiv").checked : sourcePrefs.enable_arxiv !== false;
-    const openReviewEnabled = $("settingEnableOpenReview") ? $("settingEnableOpenReview").checked : sourcePrefs.enable_openreview !== false;
     const arxivCategories = arxivEnabled ? selectedSourceValues("arxivCategories") : [];
-    const conferences = openReviewEnabled ? selectedSourceValues("conferenceSources") : [];
     return {
       arxiv_categories: arxivCategories,
-      conferences,
-      journals: selectedSourceValues("journalSources")
+      conferences: [],
+      journals: []
     };
   }
 
@@ -6408,14 +6406,12 @@
     await loadHealth();
     await loadUsers();
     await loadSourceOptions();
-    await loadLatestPush();
     await loadWiki();
     await loadSettings();
     await loadLlmSetup({ openWhenMissing: true });
-    await resumeDailyTask();
     updatePaperDailyCustomDates();
-    const initialView = window.location.hash.slice(1) || "papers";
-    setView(document.getElementById(initialView) ? initialView : "papers", false);
+    const initialView = window.location.hash.slice(1) || "paperdaily";
+    setView(document.getElementById(initialView) ? initialView : "paperdaily", false);
   }
 
   window.addEventListener("DOMContentLoaded", () => {

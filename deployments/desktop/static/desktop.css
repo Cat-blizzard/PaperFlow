@@ -592,6 +592,10 @@ body.chat-view #chat {
   gap: 8px;
 }
 
+.source-grid.arxiv-only-source-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .source-group {
   border: 1px solid #e3ebf7;
   border-radius: 8px;
