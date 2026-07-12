@@ -62,6 +62,7 @@
     paperdailyTaskId: "",
     paperdailyPollToken: 0,
     paperdailyEditingTopicId: "",
+    llmSetup: null,
     settings: null
   };
 
@@ -1789,6 +1790,23 @@
 
     if (route === "/api/health") {
       return { ok: true, database_exists: true, database: "demo.db", version: "offline-demo" };
+    }
+    if (route === "/api/llm-setup") {
+      return {
+        ok: true,
+        selected_provider: body.provider_id || "deepseek",
+        model: body.model || "deepseek-chat",
+        base_url: body.base_url || "https://api.deepseek.com",
+        has_api_key: true,
+        configured: true,
+        options: [
+          { id: "deepseek", label: "DeepSeek", default_model: "deepseek-chat", default_base_url: "https://api.deepseek.com", requires_api_key: true },
+          { id: "openai", label: "OpenAI", default_model: "gpt-4o-mini", default_base_url: "", requires_api_key: true },
+          { id: "anthropic", label: "Anthropic", default_model: "claude-sonnet-4-5", default_base_url: "", requires_api_key: true },
+          { id: "ollama", label: "Ollama (local)", default_model: "qwen2.5:7b", default_base_url: "http://127.0.0.1:11434", requires_api_key: false },
+          { id: "custom_openai", label: "OpenAI-compatible API", default_model: "", default_base_url: "", requires_api_key: true }
+        ]
+      };
     }
     if (route === "/api/paperdaily/status") {
       return {
@@ -5684,20 +5702,112 @@
     $("proxyInput").value = advanced.http_proxy || "";
     $("envSettingsForm").className = "env-form";
     $("envSettingsForm").innerHTML = [
-      envRow(env, "PAPERFLOW_LLM_PROVIDER", "LLM Provider", env.OPENAI_API_KEY ? "openai" : ""),
+      envRow(env, "PAPERFLOW_LLM_PROVIDER", "LLM Provider", env.PAPERFLOW_LLM_API_KEY ? "openai" : ""),
       envRow(env, "PAPERFLOW_LLM_MODEL", "LLM Model"),
-      envRow(env, "OPENAI_API_KEY", "OpenAI API Key"),
-      envRow(env, "OPENAI_BASE_URL", "OpenAI Base URL"),
+      envRow(env, "PAPERFLOW_LLM_API_KEY", "LLM API Key", "", ["OPENAI_API_KEY"]),
+      envRow(env, "PAPERFLOW_LLM_BASE_URL", "LLM Base URL", "", ["OPENAI_BASE_URL"]),
       envRow(env, "MINERU_PARSE_ENABLED", "MinerU PDF Parse", "true"),
       envRow(env, "MINERU_API_KEY", "MinerU API Key"),
       envRow(env, "MINERU_API_BASE_URL", "MinerU Base URL", "https://mineru.net"),
       envRow(env, "MINERU_MODEL_VERSION", "MinerU Model", "vlm"),
       envRow(env, "MINERU_PARSE_TIMEOUT", "MinerU Timeout", "300"),
-      envRow(env, "PAPERFLOW_EMBED_PROVIDER", "Embedding Provider", env.OPENAI_API_KEY ? "openai" : "", ["PAPERFLOW_EMBEDDING_PROVIDER"]),
+      envRow(env, "PAPERFLOW_EMBED_PROVIDER", "Embedding Provider", env.PAPERFLOW_EMBED_API_KEY ? "openai" : "", ["PAPERFLOW_EMBEDDING_PROVIDER"]),
       envRow(env, "PAPERFLOW_EMBED_MODEL", "Embedding Model", "", ["PAPERFLOW_EMBEDDING_MODEL"]),
+      envRow(env, "PAPERFLOW_EMBED_API_KEY", "Embedding API Key"),
+      envRow(env, "PAPERFLOW_EMBED_BASE_URL", "Embedding Base URL"),
       envRow(env, "ANTHROPIC_API_KEY", "Anthropic API Key"),
       envRow(env, "ANTHROPIC_BASE_URL", "Anthropic Base URL")
     ].join("");
+  }
+
+  function llmSetupOption(providerId) {
+    return (state.llmSetup?.options || []).find((item) => item.id === providerId) || null;
+  }
+
+  function setLlmSetupStatus(message = "", mode = "") {
+    const target = $("llmSetupStatus");
+    if (!target) return;
+    target.textContent = message;
+    target.className = `llm-setup-status ${mode}`.trim();
+  }
+
+  function applyLlmSetupProvider(providerId, useCurrentConfig = false) {
+    const option = llmSetupOption(providerId);
+    if (!option) return;
+    const keyInput = $("llmSetupApiKey");
+    const keyLabel = keyInput?.closest("label");
+    const modelInput = $("llmSetupModel");
+    const baseInput = $("llmSetupBaseUrl");
+    const isCurrentProvider = providerId === state.llmSetup?.selected_provider;
+    const canKeepKey = Boolean(option.requires_api_key && isCurrentProvider && state.llmSetup?.has_api_key);
+
+    if (modelInput) {
+      modelInput.value = useCurrentConfig && isCurrentProvider
+        ? (state.llmSetup?.model || option.default_model || "")
+        : (option.default_model || "");
+    }
+    if (baseInput) {
+      baseInput.value = useCurrentConfig && isCurrentProvider
+        ? (state.llmSetup?.base_url || option.default_base_url || "")
+        : (option.default_base_url || "");
+      baseInput.required = providerId === "custom_openai";
+    }
+    if (keyInput) {
+      keyInput.value = "";
+      keyInput.disabled = !option.requires_api_key;
+      keyInput.required = Boolean(option.requires_api_key && !canKeepKey);
+      keyInput.placeholder = !option.requires_api_key
+        ? "本地 Ollama 不需要 API Key"
+        : canKeepKey ? "已配置，留空则保持不变" : "请输入 API Key";
+    }
+    if (keyLabel) keyLabel.hidden = !option.requires_api_key;
+    $("llmSetupHint").textContent = option.requires_api_key
+      ? "API Key 只保存到本机的 .env，不会显示在页面或发送到其他服务。"
+      : "Ollama 使用本机服务，不需要 API Key；请确保模型已经在本机可用。";
+    setLlmSetupStatus("");
+  }
+
+  function renderLlmSetup(data) {
+    state.llmSetup = data || null;
+    const select = $("llmSetupProvider");
+    if (!select) return;
+    const options = Array.isArray(data?.options) ? data.options : [];
+    select.innerHTML = options.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("");
+    const selected = options.some((item) => item.id === data?.selected_provider)
+      ? data.selected_provider
+      : "deepseek";
+    select.value = selected;
+    applyLlmSetupProvider(selected, true);
+  }
+
+  async function loadLlmSetup(options = {}) {
+    const data = await api("/api/llm-setup");
+    renderLlmSetup(data);
+    const dialog = $("llmSetupDialog");
+    if (dialog && (options.open || (options.openWhenMissing && !data.configured)) && !dialog.open) {
+      dialog.showModal();
+    }
+    return data;
+  }
+
+  async function saveLlmSetup() {
+    const form = $("llmSetupForm");
+    if (!form.reportValidity()) return;
+    const data = await api("/api/llm-setup", {
+      method: "POST",
+      body: JSON.stringify({
+        provider_id: $("llmSetupProvider").value,
+        model: $("llmSetupModel").value.trim(),
+        base_url: $("llmSetupBaseUrl").value.trim(),
+        api_key: $("llmSetupApiKey").value
+      })
+    });
+    renderLlmSetup(data);
+    $("llmSetupDialog")?.close();
+    await loadSettings();
+    if (state.currentView === "paperdaily") await loadPaperDaily({ loadDigest: false });
+    showSettingsMessage(`日报模型已配置为 ${llmSetupOption(data.selected_provider)?.label || data.selected_provider}。可在“设置”中测试 LLM。`);
+    showFeedbackToast("success", "日报模型已保存", "中文摘要和 LLM 重排将使用这个 Provider。Codex 精读不受影响。");
   }
 
   async function loadSettings() {
@@ -6207,6 +6317,26 @@
       }
     });
     $("refreshSettingsBtn")?.addEventListener("click", () => runAction(loadSettings, "加载设置"));
+    $("openLlmSetupBtn")?.addEventListener("click", () => runAction(
+      () => loadLlmSetup({ open: true }),
+      "配置日报模型"
+    ));
+    $("llmSetupProvider")?.addEventListener("change", (event) => {
+      applyLlmSetupProvider(event.target.value);
+    });
+    $("llmSetupCloseBtn")?.addEventListener("click", () => $("llmSetupDialog")?.close());
+    $("llmSetupSkipBtn")?.addEventListener("click", () => $("llmSetupDialog")?.close());
+    $("llmSetupForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      runAction(async () => {
+        try {
+          await saveLlmSetup();
+        } catch (error) {
+          setLlmSetupStatus(error.message || String(error), "error");
+          throw error;
+        }
+      }, "保存日报模型");
+    });
     $("saveSettingsBtn").addEventListener("click", () => runAction(saveSettings, "保存设置"));
     $("saveAdvancedSettingsBtn").addEventListener("click", () => runAction(saveSettings, "保存设置"));
     $("saveStorageSettingsBtn").addEventListener("click", () => runAction(saveSettings, "保存设置"));
@@ -6281,6 +6411,7 @@
     await loadLatestPush();
     await loadWiki();
     await loadSettings();
+    await loadLlmSetup({ openWhenMissing: true });
     await resumeDailyTask();
     updatePaperDailyCustomDates();
     const initialView = window.location.hash.slice(1) || "papers";

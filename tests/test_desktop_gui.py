@@ -24,6 +24,8 @@ def test_desktop_server_routes_are_registered() -> None:
     assert "/api/health" in server.GET_ROUTES
     assert "/api/source-options" in server.GET_ROUTES
     assert "/api/settings" in server.POST_ROUTES
+    assert "/api/llm-setup" in server.GET_ROUTES
+    assert "/api/llm-setup" in server.POST_ROUTES
     assert "/api/submit" in server.POST_ROUTES
     assert "/api/export" in server.POST_ROUTES
     assert "/api/roles" in server.GET_ROUTES
@@ -98,14 +100,20 @@ def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_control
     assert 'id="pdDigestList"' in html
     assert 'id="pdDigestRunSelect"' in html
     assert 'id="pdTopicDialog"' in html
+    assert 'id="llmSetupDialog"' in html
+    assert 'id="llmSetupProvider"' in html
     assert "function loadPaperDaily" in script
+    assert "function loadLlmSetup" in script
+    assert "function saveLlmSetup" in script
     assert "function loadPaperDailyRuns" in script
     assert "function startPaperDailyDigest" in script
     assert "function startPaperDailyCodexRead" in script
     assert "function pollPaperDailyTask" in script
     assert "/api/paperdaily/run" in script
     assert "/api/paperdaily/read" in script
+    assert "/api/llm-setup" in script
     assert ".paperdaily-layout" in css
+    assert ".llm-setup-dialog" in css
     assert ".paperdaily-topic-dialog" in css
 
 
@@ -146,6 +154,82 @@ def test_desktop_server_forwards_response_language_to_agents(monkeypatch: pytest
     assert captured["read"]["response_language"] == "en"
     assert captured["submit"]["response_language"] == "en"
     assert captured["github"]["response_language"] == "en"
+
+
+def test_desktop_llm_setup_defaults_to_deepseek_and_deduplicates_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "PAPERFLOW_LLM_PROVIDER=openai",
+                "PAPERFLOW_LLM_MODEL=deepseek-chat",
+                "PAPERFLOW_LLM_API_KEY=old-value",
+                "PAPERFLOW_LLM_API_KEY=",
+                "PAPERFLOW_LLM_BASE_URL=",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(agents, "ENV_PATH", env_path)
+    for key in (
+        "PAPERFLOW_LLM_PROVIDER",
+        "PAPERFLOW_LLM_MODEL",
+        "PAPERFLOW_LLM_API_KEY",
+        "PAPERFLOW_LLM_BASE_URL",
+        "PAPERFLOW_OPENAI_API_KEY",
+        "OPENAI_API_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    initial = agents.llm_setup()
+    saved = agents.configure_llm_setup(
+        provider_id="deepseek",
+        model="deepseek-chat",
+        base_url="https://api.deepseek.com",
+        api_key="test-deepseek-key",
+    )
+    text = env_path.read_text(encoding="utf-8")
+
+    assert initial["selected_provider"] == "deepseek"
+    assert initial["configured"] is False
+    assert saved["configured"] is True
+    assert saved["has_api_key"] is True
+    assert "test-deepseek-key" not in str(saved)
+    assert text.count("PAPERFLOW_LLM_API_KEY=") == 1
+    assert text.count("PAPERFLOW_LLM_BASE_URL=") == 1
+    assert "PAPERFLOW_LLM_BASE_URL=https://api.deepseek.com" in text
+
+
+def test_desktop_server_delegates_llm_setup_routes(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(agents, "llm_setup", lambda: {"configured": False, "options": []})
+    monkeypatch.setattr(
+        agents,
+        "configure_llm_setup",
+        lambda **kwargs: captured.setdefault("setup", kwargs) or {"configured": True},
+    )
+
+    assert server.GET_ROUTES["/api/llm-setup"]({}, {})["configured"] is False
+    server.POST_ROUTES["/api/llm-setup"](
+        {},
+        {
+            "provider_id": "deepseek",
+            "model": "deepseek-chat",
+            "base_url": "https://api.deepseek.com",
+            "api_key": "test-key",
+        },
+    )
+
+    assert captured["setup"] == {
+        "provider_id": "deepseek",
+        "model": "deepseek-chat",
+        "base_url": "https://api.deepseek.com",
+        "api_key": "test-key",
+    }
 
 
 def test_desktop_server_delegates_paperdaily_routes(monkeypatch: pytest.MonkeyPatch) -> None:

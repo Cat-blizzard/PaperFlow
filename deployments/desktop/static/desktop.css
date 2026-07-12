@@ -3626,6 +3626,88 @@ body.chat-view .source-list.empty {
   background: rgba(23, 42, 68, 0.34);
 }
 
+.llm-setup-dialog {
+  width: min(620px, calc(100vw - 32px));
+  border: 1px solid #cbd9ea;
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(22, 44, 78, 0.2);
+  padding: 0;
+}
+
+.llm-setup-dialog::backdrop {
+  background: rgba(23, 42, 68, 0.42);
+}
+
+.llm-setup-dialog form {
+  padding: 18px;
+}
+
+.dialog-copy {
+  max-width: 520px;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.llm-setup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.llm-setup-grid label {
+  display: grid;
+  gap: 5px;
+  color: #50647e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.llm-setup-grid input,
+.llm-setup-grid select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid #cfddeb;
+  border-radius: 6px;
+  background: #fff;
+  padding: 7px 9px;
+  color: #273d5f;
+  font: inherit;
+  font-weight: 500;
+}
+
+.llm-setup-grid .llm-setup-key,
+.llm-setup-grid .llm-setup-base {
+  grid-column: 1 / -1;
+}
+
+.llm-setup-grid .llm-setup-key[hidden] {
+  display: none;
+}
+
+.llm-setup-hint,
+.llm-setup-status {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.llm-setup-hint {
+  color: var(--muted);
+}
+
+.llm-setup-status {
+  min-height: 18px;
+  color: #2d6a4f;
+}
+
+.llm-setup-status.error {
+  color: #b42318;
+}
+
 .paperdaily-topic-dialog form {
   padding: 18px;
 }
@@ -3700,6 +3782,10 @@ body.chat-view .source-list.empty {
 
   .paperdaily-digest-toolbar {
     justify-content: start;
+  }
+
+  .llm-setup-grid {
+    grid-template-columns: 1fr;
   }
 }
 

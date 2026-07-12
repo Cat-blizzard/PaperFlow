@@ -418,6 +418,7 @@
                 <label>备用模型 <input id="fallbackModelInput" value="GPT-4o"></label>
               </div>
               <div class="button-row">
+                <button id="openLlmSetupBtn" type="button">设置日报模型</button>
                 <button id="testLlmBtn" type="button">测试 LLM</button>
                 <button id="testEmbedBtn" type="button">测试 Embedding</button>
                 <button id="saveSettingsBtn" class="primary" type="button">保存设置</button>
@@ -542,6 +543,40 @@
     </div>
 
     <div id="feedbackToast" class="feedback-toast" role="status" aria-live="polite" hidden></div>
+
+    <dialog id="llmSetupDialog" class="llm-setup-dialog">
+      <form id="llmSetupForm" method="dialog">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">PaperDaily Setup</p>
+            <h2>配置日报模型</h2>
+            <p class="dialog-copy">默认使用 DeepSeek 生成中文摘要与重排；Codex 精读继续使用你的 Codex 登录额度。</p>
+          </div>
+          <button id="llmSetupCloseBtn" class="icon-button" type="button" title="暂不配置" aria-label="暂不配置">×</button>
+        </div>
+        <div class="llm-setup-grid">
+          <label>Provider
+            <select id="llmSetupProvider" required></select>
+          </label>
+          <label>模型
+            <input id="llmSetupModel" required autocomplete="off">
+          </label>
+          <label class="llm-setup-key">API Key
+            <input id="llmSetupApiKey" type="password" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="llm-setup-base">Base URL
+            <input id="llmSetupBaseUrl" type="url" autocomplete="off" placeholder="https://api.deepseek.com">
+          </label>
+        </div>
+        <p id="llmSetupHint" class="llm-setup-hint">API Key 只保存到本机的 .env，不会显示在页面或发送到其他服务。</p>
+        <div id="llmSetupStatus" class="llm-setup-status" role="status" aria-live="polite"></div>
+        <div class="dialog-actions">
+          <span></span>
+          <button id="llmSetupSkipBtn" type="button">暂不配置</button>
+          <button id="llmSetupSaveBtn" class="primary" type="submit">保存并继续</button>
+        </div>
+      </form>
+    </dialog>
 
     <dialog id="pdTopicDialog" class="paperdaily-topic-dialog">
       <form id="pdTopicForm" method="dialog">

@@ -136,6 +136,19 @@ def _api_provider_test(_query_params: Dict[str, Any], body: Dict[str, Any]) -> D
     return agents.test_provider(str(body.get("kind") or ""))
 
 
+def _api_llm_setup(_query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
+    return agents.llm_setup()
+
+
+def _api_configure_llm_setup(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
+    return agents.configure_llm_setup(
+        provider_id=str(body.get("provider_id") or ""),
+        model=str(body.get("model") or ""),
+        base_url=str(body.get("base_url") or ""),
+        api_key=str(body.get("api_key") or ""),
+    )
+
+
 def _api_users(_query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
     return agents.list_users()
 
@@ -504,6 +517,7 @@ def _api_paperdaily_read(_query_params: Dict[str, Any], body: Dict[str, Any]) ->
 GET_ROUTES: Dict[str, ApiHandler] = {
     "/api/health": _api_health,
     "/api/settings": _api_settings,
+    "/api/llm-setup": _api_llm_setup,
     "/api/source-options": _api_source_options,
     "/api/users": _api_users,
     "/api/roles": _api_roles,
@@ -531,6 +545,7 @@ GET_ROUTES: Dict[str, ApiHandler] = {
 POST_ROUTES: Dict[str, ApiHandler] = {
     "/api/provider-test": _api_provider_test,
     "/api/settings": _api_save_settings,
+    "/api/llm-setup": _api_configure_llm_setup,
     "/api/profile": _api_create_profile,
     "/api/roles": _api_update_roles,
     "/api/daily": _api_daily,

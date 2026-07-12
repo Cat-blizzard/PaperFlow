@@ -52,6 +52,49 @@ _READING_TASKS: Dict[str, Dict[str, Any]] = {}
 
 ENV_PATH = PROJECT_ROOT / ".env"
 
+LLM_SETUP_OPTIONS: Dict[str, Dict[str, Any]] = {
+    "deepseek": {
+        "id": "deepseek",
+        "label": "DeepSeek",
+        "provider": "openai",
+        "default_model": "deepseek-chat",
+        "default_base_url": "https://api.deepseek.com",
+        "requires_api_key": True,
+    },
+    "openai": {
+        "id": "openai",
+        "label": "OpenAI",
+        "provider": "openai",
+        "default_model": "gpt-4o-mini",
+        "default_base_url": "",
+        "requires_api_key": True,
+    },
+    "anthropic": {
+        "id": "anthropic",
+        "label": "Anthropic",
+        "provider": "anthropic",
+        "default_model": "claude-sonnet-4-5",
+        "default_base_url": "",
+        "requires_api_key": True,
+    },
+    "ollama": {
+        "id": "ollama",
+        "label": "Ollama (local)",
+        "provider": "ollama",
+        "default_model": "qwen2.5:7b",
+        "default_base_url": "http://127.0.0.1:11434",
+        "requires_api_key": False,
+    },
+    "custom_openai": {
+        "id": "custom_openai",
+        "label": "OpenAI-compatible API",
+        "provider": "openai",
+        "default_model": "",
+        "default_base_url": "",
+        "requires_api_key": True,
+    },
+}
+
 
 def _normalize_response_language(value: Any = None) -> str:
     raw = str(value or "").strip().lower().replace("_", "-")
@@ -61,10 +104,14 @@ def _normalize_response_language(value: Any = None) -> str:
 EDITABLE_ENV_KEYS = [
     "PAPERFLOW_LLM_PROVIDER",
     "PAPERFLOW_LLM_MODEL",
+    "PAPERFLOW_LLM_API_KEY",
+    "PAPERFLOW_LLM_BASE_URL",
     "PAPERFLOW_FALLBACK_LLM_MODEL",
     "PAPERFLOW_EMBED_PROVIDER",
     "PAPERFLOW_EMBED_MODEL",
     "PAPERFLOW_EMBED_DIMENSIONS",
+    "PAPERFLOW_EMBED_API_KEY",
+    "PAPERFLOW_EMBED_BASE_URL",
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
     "OPENAI_API_TIMEOUT",
@@ -919,6 +966,11 @@ def _merge_env_file(updates: Dict[str, str]) -> None:
             continue
         key = line.split("=", 1)[0].strip()
         if key in updates:
+            if key in used:
+                # Keep a single effective value for fields managed by the GUI.
+                # This avoids a later blank template value overriding a key the
+                # user supplied earlier in the same .env file.
+                continue
             next_lines.append(f"{key}={_serialize_env_value(updates[key])}")
             used.add(key)
         else:
@@ -959,6 +1011,108 @@ def save_settings(values: Dict[str, Any]) -> Dict[str, Any]:
     for key, value in updates.items():
         os.environ[key] = value
     return settings()
+
+
+def _current_llm_setup_id() -> str:
+    provider = _env_text("PAPERFLOW_LLM_PROVIDER", "").lower()
+    model = _env_text("PAPERFLOW_LLM_MODEL", "").lower()
+    base_url = _env_text("PAPERFLOW_LLM_BASE_URL", "").lower()
+    if provider == "anthropic":
+        return "anthropic"
+    if provider == "ollama":
+        return "ollama"
+    if provider == "openai":
+        if "deepseek" in model or "deepseek" in base_url:
+            return "deepseek"
+        if not base_url or "api.openai.com" in base_url:
+            return "openai"
+        return "custom_openai"
+    return "deepseek"
+
+
+def _llm_api_key_present(provider_id: str) -> bool:
+    if provider_id == "anthropic":
+        return bool(_env_text("ANTHROPIC_API_KEY"))
+    if provider_id == "ollama":
+        return True
+    return bool(
+        _env_text("PAPERFLOW_LLM_API_KEY")
+        or _env_text("PAPERFLOW_OPENAI_API_KEY")
+        or _env_text("OPENAI_API_KEY")
+    )
+
+
+def llm_setup() -> Dict[str, Any]:
+    """Return a safe, credential-free view of the GUI LLM onboarding state."""
+
+    selected = _current_llm_setup_id()
+    option = LLM_SETUP_OPTIONS[selected]
+    model = _env_text("PAPERFLOW_LLM_MODEL", str(option["default_model"]))
+    if selected == "anthropic":
+        base_url = _env_text("ANTHROPIC_BASE_URL", str(option["default_base_url"]))
+    elif selected == "ollama":
+        base_url = _env_text("OLLAMA_BASE_URL", str(option["default_base_url"]))
+    else:
+        base_url = _env_text("PAPERFLOW_LLM_BASE_URL", str(option["default_base_url"]))
+    has_api_key = _llm_api_key_present(selected)
+    return {
+        "selected_provider": selected,
+        "model": model,
+        "base_url": base_url,
+        "has_api_key": has_api_key,
+        "configured": bool(has_api_key and model),
+        "options": [dict(option) for option in LLM_SETUP_OPTIONS.values()],
+    }
+
+
+def configure_llm_setup(
+    *,
+    provider_id: str,
+    model: str = "",
+    base_url: str = "",
+    api_key: str = "",
+) -> Dict[str, Any]:
+    """Persist a selected desktop LLM provider without returning its credential."""
+
+    selected = str(provider_id or "").strip().lower()
+    option = LLM_SETUP_OPTIONS.get(selected)
+    if option is None:
+        raise ValueError("Unsupported LLM provider")
+
+    normalized_model = str(model or "").strip() or str(option["default_model"])
+    if not normalized_model:
+        raise ValueError("Model is required for a custom OpenAI-compatible provider")
+    normalized_base_url = str(base_url or "").strip() or str(option["default_base_url"])
+    if selected == "custom_openai" and not normalized_base_url:
+        raise ValueError("Base URL is required for a custom OpenAI-compatible provider")
+
+    current = llm_setup()
+    normalized_key = str(api_key or "").strip()
+    preserve_existing_key = (
+        not normalized_key
+        and current["selected_provider"] == selected
+        and bool(current["has_api_key"])
+    )
+    if bool(option["requires_api_key"]) and not (normalized_key or preserve_existing_key):
+        raise ValueError("API key is required for the selected provider")
+
+    updates: Dict[str, Any] = {
+        "PAPERFLOW_LLM_PROVIDER": str(option["provider"]),
+        "PAPERFLOW_LLM_MODEL": normalized_model,
+    }
+    if selected == "anthropic":
+        updates["ANTHROPIC_BASE_URL"] = normalized_base_url
+        if normalized_key:
+            updates["ANTHROPIC_API_KEY"] = normalized_key
+    elif selected == "ollama":
+        updates["OLLAMA_BASE_URL"] = normalized_base_url
+    else:
+        updates["PAPERFLOW_LLM_BASE_URL"] = normalized_base_url
+        if normalized_key:
+            updates["PAPERFLOW_LLM_API_KEY"] = normalized_key
+
+    save_settings(updates)
+    return llm_setup()
 
 
 def source_options() -> Dict[str, Any]:
