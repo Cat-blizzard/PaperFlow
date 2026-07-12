@@ -14,6 +14,7 @@ from paperflow.providers import (
     build_llm_provider,
     load_provider_config,
 )
+from paperflow.providers.credentials import resolve_openai_compatible_credentials
 from paperflow.providers.embedding import (
     OllamaEmbedding,
     OpenAIEmbedding,
@@ -27,6 +28,22 @@ from paperflow.providers.llm import (
     OpenAILLM,
     _field,
 )
+
+_OPENAI_COMPAT_CREDENTIAL_ENV = (
+    "PAPERFLOW_LLM_API_KEY",
+    "PAPERFLOW_LLM_BASE_URL",
+    "PAPERFLOW_EMBED_API_KEY",
+    "PAPERFLOW_EMBED_BASE_URL",
+    "PAPERFLOW_OPENAI_API_KEY",
+    "PAPERFLOW_OPENAI_BASE_URL",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+)
+
+
+def _clear_openai_compatible_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in _OPENAI_COMPAT_CREDENTIAL_ENV:
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.mark.unit
@@ -364,6 +381,83 @@ def test_build_embedding_falls_back_to_hash_without_credentials(
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     embed = build_embedding_provider()
     assert embed.name == "hash"
+
+
+@pytest.mark.unit
+def test_openai_compatible_credentials_have_independent_llm_and_embedding_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_openai_compatible_credentials(monkeypatch)
+    monkeypatch.setenv("PAPERFLOW_LLM_API_KEY", "llm-key")
+    monkeypatch.setenv("PAPERFLOW_LLM_BASE_URL", "https://llm.example/v1")
+    monkeypatch.setenv("PAPERFLOW_EMBED_API_KEY", "embed-key")
+    monkeypatch.setenv("PAPERFLOW_EMBED_BASE_URL", "https://embed.example/v1")
+    monkeypatch.setenv("PAPERFLOW_OPENAI_API_KEY", "shared-paperflow-key")
+    monkeypatch.setenv("PAPERFLOW_OPENAI_BASE_URL", "https://shared.example/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "legacy-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://legacy.example/v1")
+
+    assert resolve_openai_compatible_credentials("llm") == ("llm-key", "https://llm.example/v1")
+    assert resolve_openai_compatible_credentials("embed") == ("embed-key", "https://embed.example/v1")
+
+
+@pytest.mark.unit
+def test_openai_compatible_credentials_use_shared_then_legacy_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_openai_compatible_credentials(monkeypatch)
+    monkeypatch.setenv("PAPERFLOW_OPENAI_API_KEY", "shared-paperflow-key")
+    monkeypatch.setenv("PAPERFLOW_OPENAI_BASE_URL", "https://shared.example/v1")
+
+    assert resolve_openai_compatible_credentials("llm") == (
+        "shared-paperflow-key",
+        "https://shared.example/v1",
+    )
+    assert resolve_openai_compatible_credentials("embed") == (
+        "shared-paperflow-key",
+        "https://shared.example/v1",
+    )
+
+    monkeypatch.delenv("PAPERFLOW_OPENAI_API_KEY")
+    monkeypatch.delenv("PAPERFLOW_OPENAI_BASE_URL")
+    monkeypatch.setenv("OPENAI_API_KEY", "legacy-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://legacy.example/v1")
+
+    assert resolve_openai_compatible_credentials("llm") == ("legacy-key", "https://legacy.example/v1")
+    assert resolve_openai_compatible_credentials("embed") == ("legacy-key", "https://legacy.example/v1")
+
+
+@pytest.mark.unit
+def test_build_openai_providers_use_their_separate_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_openai_compatible_credentials(monkeypatch)
+    monkeypatch.setenv("PAPERFLOW_LLM_PROVIDER", "openai")
+    monkeypatch.setenv("PAPERFLOW_EMBED_PROVIDER", "openai")
+    monkeypatch.setenv("PAPERFLOW_LLM_API_KEY", "deepseek-key")
+    monkeypatch.setenv("PAPERFLOW_LLM_BASE_URL", "https://api.deepseek.example")
+    monkeypatch.setenv("PAPERFLOW_EMBED_API_KEY", "bge-key")
+    monkeypatch.setenv("PAPERFLOW_EMBED_BASE_URL", "https://embedding.example/v1")
+    captured: list[dict[str, object]] = []
+
+    class FakeClient:
+        pass
+
+    class FakeOpenAIModule:
+        @staticmethod
+        def OpenAI(**kwargs):  # type: ignore[no-untyped-def]
+            captured.append(dict(kwargs))
+            return FakeClient()
+
+    monkeypatch.setitem(sys.modules, "openai", FakeOpenAIModule)
+
+    llm = build_llm_provider()
+    embed = build_embedding_provider()
+
+    assert isinstance(llm, OpenAILLM)
+    assert isinstance(embed, OpenAIEmbedding)
+    assert captured[0]["api_key"] == "deepseek-key"
+    assert captured[0]["base_url"] == "https://api.deepseek.example"
+    assert captured[1]["api_key"] == "bge-key"
+    assert captured[1]["base_url"] == "https://embedding.example/v1"
 
 
 @pytest.mark.unit

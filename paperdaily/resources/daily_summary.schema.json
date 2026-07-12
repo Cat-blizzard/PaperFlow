@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PaperDaily Chinese abstract summary",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "title_zh": {"type": "string"},
+    "one_sentence_summary": {"type": "string"},
+    "problem": {"type": "string"},
+    "method": {"type": "string"},
+    "contributions": {
+      "type": "array",
+      "items": {"type": "string"},
+      "maxItems": 4
+    },
+    "limitations_from_abstract": {
+      "type": "array",
+      "items": {"type": "string"},
+      "maxItems": 3
+    },
+    "recommendation_reason": {"type": "string"}
+  },
+  "required": [
+    "title_zh",
+    "one_sentence_summary",
+    "problem",
+    "method",
+    "contributions",
+    "limitations_from_abstract",
+    "recommendation_reason"
+  ]
+}

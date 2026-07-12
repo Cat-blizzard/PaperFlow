@@ -32,6 +32,7 @@ and adapt tomorrow's recommendations.
 [Quick Start](#quick-start) | [Desktop Preview](#desktop-preview) | [Local GUI](#local-gui) |
 [GUI Preview](https://openraiser.github.io/PaperFlow/deployments/desktop/static/index.html?demo=1) |
 [CLI Usage](#cli-usage) |
+[PaperDaily MVP](docs/PAPERDAILY.md) |
 [Feedback Loop](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/feedback-loop.md) |
 [Feishu/Lark Bot](#feishu--lark-bot) |
 [PaperFlow-Bench](#paperflow-bench) | [Reproduce](https://github.com/OpenRaiser/PaperFlow/blob/main/experiments/REPRODUCE.md)
@@ -67,6 +68,19 @@ webhook server alive for scheduled chat pushes.
     <td>PaperFlow-Bench on HuggingFace, with public evaluation scripts</td>
   </tr>
 </table>
+
+## PaperDaily MVP (this fork)
+
+This fork adds a local-first `paperdaily` CLI for topic-based arXiv tracking,
+missed-day catch-up, optional Chinese abstract summaries, Markdown digests,
+feedback, and evidence-grounded deep reading through Codex CLI or Claude Code.
+Feishu is optional; the default workflow stays in the terminal, SQLite, and
+local Markdown files. Real semantic ranking and Chinese summaries require a
+configured embedding/LLM provider—offline fallbacks remain rule-based and do
+not pretend to be semantic or translated output.
+
+See the Windows PowerShell quick start, current command surface, configuration,
+and security boundaries in **[docs/PAPERDAILY.md](docs/PAPERDAILY.md)**.
 
 ## Desktop Preview
 

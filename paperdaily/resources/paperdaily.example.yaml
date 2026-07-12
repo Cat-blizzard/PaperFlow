@@ -1,0 +1,80 @@
+user:
+  id: user_001
+  timezone: Asia/Shanghai
+runtime:
+  database: ../../data/paperflow.db
+  output_dir: ../../data/output
+daily:
+  default_limit: 12
+  rerank_limit: 30
+  llm_rerank_enabled: true
+  llm_rerank_weight: 0.25
+  llm_rerank_max_tokens: 3000
+  llm_rerank_input_cost_per_million_tokens: 0.0
+  llm_rerank_output_cost_per_million_tokens: 0.0
+  summary_language: zh-CN
+  generate_chinese_summary: true
+  channels: [terminal, markdown]
+  arxiv_page_size: 200
+  arxiv_max_results: 5000
+  arxiv_request_delay_seconds: 3
+  arxiv_cache_ttl_hours: 24
+  mmr_lambda: 0.75
+catchup:
+  interactive: true
+  auto_catchup_days: 2
+  first_run_days: 7
+  default_window_days: 7
+  max_window_days: 30
+  max_papers_per_run: 30
+  overflow_mode: curated
+providers:
+  default_provider: auto
+  fallback_order: [codex, claude]
+  codex:
+    command: codex
+  claude:
+    command: claude
+    max_budget_usd: 3.0
+deep_read:
+  isolated_home: false
+  max_pdf_pages: 100
+  max_extracted_text_chars: 500000
+topics:
+  - id: embodied-vla
+    name: 具身智能与 VLA
+    enabled: true
+    description: >
+      关注视觉语言动作模型、机器人基础模型、World Action Model、跨本体学习、
+      机器人操作、动作表示、机器人数据扩展和真实机器人泛化。
+    arxiv_categories: [cs.RO, cs.AI, cs.CV, cs.LG, cs.CL]
+    exact_phrases:
+      - vision-language-action
+      - vision language action
+      - world action model
+      - world-action model
+      - robot foundation model
+      - generalist robot policy
+      - cross-embodiment
+    keywords:
+      - VLA
+      - WAM
+      - OpenVLA
+      - SmolVLA
+      - RT-2
+      - GR00T
+      - pi0
+      - pi0.5
+      - Octo
+      - RoboMamba
+      - robotic manipulation
+      - visuomotor policy
+      - diffusion policy
+      - flow matching policy
+      - action tokenization
+      - imitation learning
+      - robot learning
+    context_keywords: [robot, robotic, manipulation, embodied, action, policy, embodiment]
+    negative_keywords: [wireless access management, web application monitoring]
+    daily_limit: 12
+    minimum_score: 0.25

@@ -45,6 +45,15 @@ def test_desktop_server_routes_are_registered() -> None:
     assert "/api/chat/session" in server.POST_ROUTES
     assert "/api/chat/session/delete" in server.POST_ROUTES
     assert "/api/chat/sessions/clear" in server.POST_ROUTES
+    assert "/api/paperdaily/status" in server.GET_ROUTES
+    assert "/api/paperdaily/digest" in server.GET_ROUTES
+    assert "/api/paperdaily/digests" in server.GET_ROUTES
+    assert "/api/paperdaily/task" in server.GET_ROUTES
+    assert "/api/paperdaily/note" in server.GET_ROUTES
+    assert "/api/paperdaily/topics" in server.POST_ROUTES
+    assert "/api/paperdaily/run" in server.POST_ROUTES
+    assert "/api/paperdaily/feedback" in server.POST_ROUTES
+    assert "/api/paperdaily/read" in server.POST_ROUTES
     assert 'self.send_header("Cache-Control", "no-store")' in server_source
 
 
@@ -74,6 +83,30 @@ def test_desktop_language_selector_and_response_language_contract() -> None:
     assert "response_language: responseLanguage()" in script
     assert 'response_language: responseLanguage() })' in script
     assert '$("languageSelect")?.addEventListener("change", (event) => setLocale(event.target.value))' in script
+
+
+def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_controls() -> None:
+    html = (PROJECT_ROOT / "deployments/desktop/static/index.html").read_text(encoding="utf-8")
+    script = (PROJECT_ROOT / "deployments/desktop/static/desktop.js").read_text(encoding="utf-8")
+    css = (PROJECT_ROOT / "deployments/desktop/static/desktop.css").read_text(encoding="utf-8")
+
+    assert 'data-view="paperdaily"' in html
+    assert 'id="paperdaily"' in html
+    assert 'id="pdTopicsList"' in html
+    assert 'id="pdPreviewBtn"' in html
+    assert 'id="pdRunBtn"' in html
+    assert 'id="pdDigestList"' in html
+    assert 'id="pdDigestRunSelect"' in html
+    assert 'id="pdTopicDialog"' in html
+    assert "function loadPaperDaily" in script
+    assert "function loadPaperDailyRuns" in script
+    assert "function startPaperDailyDigest" in script
+    assert "function startPaperDailyCodexRead" in script
+    assert "function pollPaperDailyTask" in script
+    assert "/api/paperdaily/run" in script
+    assert "/api/paperdaily/read" in script
+    assert ".paperdaily-layout" in css
+    assert ".paperdaily-topic-dialog" in css
 
 
 def test_desktop_locale_covers_settings_and_wiki_dynamic_text() -> None:
@@ -113,6 +146,68 @@ def test_desktop_server_forwards_response_language_to_agents(monkeypatch: pytest
     assert captured["read"]["response_language"] == "en"
     assert captured["submit"]["response_language"] == "en"
     assert captured["github"]["response_language"] == "en"
+
+
+def test_desktop_server_delegates_paperdaily_routes(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakePaperDaily:
+        def status(self):
+            return {"configured": True}
+
+        def latest_digest(self, run_id=None):
+            captured["digest"] = run_id
+            return {"digest": None}
+
+        def list_digests(self, *, limit=30):
+            captured["digests"] = limit
+            return {"runs": []}
+
+        def task(self, task_id):
+            captured["task"] = task_id
+            return {"task_id": task_id, "status": "running"}
+
+        def read_note(self, arxiv_id):
+            captured["note"] = arxiv_id
+            return {"note": None}
+
+        def update_topic(self, action, body):
+            captured["topic"] = (action, body)
+            return {"topics": []}
+
+        def start_digest_task(self, **kwargs):
+            captured["run"] = kwargs
+            return {"task_id": "run-task", "status": "running"}
+
+        def record_feedback(self, arxiv_id, action):
+            captured["feedback"] = (arxiv_id, action)
+            return {"feedback": {"action": action}}
+
+        def start_codex_read(self, arxiv_id, *, force_parse=False):
+            captured["read"] = (arxiv_id, force_parse)
+            return {"task_id": "read-task", "status": "running"}
+
+    monkeypatch.setattr(server, "paperdaily_gui", FakePaperDaily())
+
+    assert server.GET_ROUTES["/api/paperdaily/status"]({}, {})["configured"] is True
+    server.GET_ROUTES["/api/paperdaily/digest"]({"run_id": "run-1"}, {})
+    server.GET_ROUTES["/api/paperdaily/digests"]({"limit": "8"}, {})
+    server.GET_ROUTES["/api/paperdaily/task"]({"task_id": "task-1"}, {})
+    server.GET_ROUTES["/api/paperdaily/note"]({"arxiv_id": "2607.00001"}, {})
+    server.POST_ROUTES["/api/paperdaily/topics"]({}, {"action": "enabled", "topic_id": "embodied-vla"})
+    server.POST_ROUTES["/api/paperdaily/run"]({}, {"choice": "7d", "dry_run": True, "limit": 9})
+    server.POST_ROUTES["/api/paperdaily/feedback"]({}, {"arxiv_id": "2607.00001", "action": "interested"})
+    server.POST_ROUTES["/api/paperdaily/read"]({}, {"arxiv_id": "2607.00001", "force_parse": True})
+
+    assert captured["digest"] == "run-1"
+    assert captured["digests"] == 8
+    assert captured["task"] == "task-1"
+    assert captured["note"] == "2607.00001"
+    assert captured["topic"][0] == "enabled"
+    assert captured["run"]["choice"] == "7d"
+    assert captured["run"]["dry_run"] is True
+    assert captured["feedback"] == ("2607.00001", "interested")
+    assert captured["read"] == ("2607.00001", True)
 
 
 def test_desktop_daily_target_date_controls_backend_fetch_window() -> None:

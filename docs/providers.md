@@ -31,6 +31,18 @@ paths, but new `.env` files should use `PAPERFLOW_*` consistently.
 Each backend reads its own credentials. See
 [configuration.md](configuration.md) for the full table.
 
+For OpenAI-compatible backends, credentials are split by purpose:
+
+```text
+LLM:       PAPERFLOW_LLM_*   -> PAPERFLOW_OPENAI_* -> OPENAI_*
+Embedding: PAPERFLOW_EMBED_* -> PAPERFLOW_OPENAI_* -> OPENAI_*
+```
+
+This lets PaperDaily use a text-only API for summaries and reranking while an
+independent embedding API handles semantic retrieval. These variables are
+consumed by PaperFlow only; they are not passed to the Codex CLI deep-read
+subprocess.
+
 Quick check:
 
 ```bash
@@ -57,13 +69,34 @@ but it is not a semantic embedding model.
 ```env
 PAPERFLOW_LLM_PROVIDER=openai
 PAPERFLOW_LLM_MODEL=gpt-4o-mini       # default
-OPENAI_API_KEY=sk-...
-OPENAI_BASE_URL=                      # any OpenAI-compatible gateway
+PAPERFLOW_LLM_API_KEY=sk-...
+PAPERFLOW_LLM_BASE_URL=               # any OpenAI-compatible gateway
 OPENAI_API_TIMEOUT=60
 ```
 
 Works with OpenAI proper, Azure OpenAI, DashScope, vLLM gateways, and any
 service that speaks the OpenAI Chat Completions API.
+
+### DeepSeek LLM with a separate BGE-M3 embedding API
+
+```env
+PAPERFLOW_LLM_PROVIDER=openai
+PAPERFLOW_LLM_MODEL=deepseek-v4-flash
+PAPERFLOW_LLM_API_KEY=your-deepseek-api-key
+PAPERFLOW_LLM_BASE_URL=https://api.deepseek.com
+
+PAPERFLOW_EMBED_PROVIDER=openai
+PAPERFLOW_EMBED_MODEL=BAAI/bge-m3
+PAPERFLOW_EMBED_DIMENSIONS=1024
+PAPERFLOW_EMBED_API_KEY=your-bge-m3-api-key
+PAPERFLOW_EMBED_BASE_URL=https://your-bge-m3-compatible-endpoint/v1
+```
+
+The embedding endpoint must support OpenAI's embeddings API. This recipe does
+not set `OPENAI_API_KEY`: PaperDaily's shared-home Codex deep-read provider
+therefore continues to authenticate through the user's existing Codex login.
+For Codex `--isolated-home`, configure a separate genuine OpenAI API key as
+documented in [PAPERDAILY.md](PAPERDAILY.md#93-可选-api-key-隔离-home).
 
 ### Anthropic (`PAPERFLOW_LLM_PROVIDER=anthropic`)
 
@@ -123,7 +156,8 @@ ranking quality.
 PAPERFLOW_EMBED_PROVIDER=openai
 PAPERFLOW_EMBED_MODEL=text-embedding-3-small      # default
 PAPERFLOW_EMBED_DIMENSIONS=1536
-OPENAI_API_KEY=sk-...
+PAPERFLOW_EMBED_API_KEY=sk-...
+PAPERFLOW_EMBED_BASE_URL=              # optional, embedding gateway only
 ```
 
 When the model name starts with `text-embedding-3`, PaperFlow passes the

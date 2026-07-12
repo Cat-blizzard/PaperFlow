@@ -3210,6 +3210,499 @@ body.chat-view .source-list.empty {
   line-height: 1.5;
 }
 
+.paperdaily-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 310px) minmax(0, 1fr);
+  gap: 16px;
+  max-width: 1520px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+.paperdaily-topics-pane,
+.paperdaily-run-pane,
+.paperdaily-digest-pane,
+.paperdaily-note-pane {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.paperdaily-topics-pane {
+  position: sticky;
+  top: 20px;
+  padding: 14px;
+}
+
+.paperdaily-main {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.paperdaily-topics-pane .pane-head,
+.paperdaily-run-pane .pane-head,
+.paperdaily-digest-pane .pane-head,
+.paperdaily-note-pane .pane-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.paperdaily-topics-pane .pane-head h2,
+.paperdaily-run-pane .pane-head h2,
+.paperdaily-digest-pane .pane-head h2,
+.paperdaily-note-pane .pane-head h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.paperdaily-run-pane .pane-head p:last-child,
+.paperdaily-digest-pane .pane-head p:last-child,
+.paperdaily-note-pane .pane-head p:last-child {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.paperdaily-digest-toolbar {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
+}
+
+.paperdaily-digest-toolbar label {
+  display: grid;
+  gap: 5px;
+  color: #50647e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.paperdaily-digest-toolbar select {
+  min-width: min(310px, 52vw);
+  min-height: 34px;
+  border: 1px solid #cfddeb;
+  border-radius: 6px;
+  background: #fff;
+  padding: 7px 9px;
+  color: #273d5f;
+  font: inherit;
+  font-weight: 500;
+}
+
+.paperdaily-topics-list {
+  display: grid;
+  gap: 0;
+  margin-top: 10px;
+}
+
+.paperdaily-topics-pane .meta-line {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.paperdaily-topics-list.empty,
+.paperdaily-digest-list.empty {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.paperdaily-topic-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 7px;
+  border-top: 1px solid #e8eef7;
+  padding: 10px 0;
+}
+
+.paperdaily-topic-row:first-child {
+  border-top: 0;
+}
+
+.paperdaily-topic-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.paperdaily-topic-row strong,
+.paperdaily-topic-row span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paperdaily-topic-copy {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  box-shadow: none;
+}
+
+.paperdaily-topic-copy:hover strong {
+  color: var(--blue);
+}
+
+.paperdaily-topic-row strong {
+  color: #273d5f;
+  font-size: 13px;
+}
+
+.paperdaily-topic-row span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.paperdaily-topic-row .icon-button {
+  width: 32px;
+  height: 32px;
+  font-size: 15px;
+}
+
+.paperdaily-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.paperdaily-status-grid > div {
+  min-height: 86px;
+  border: 1px solid #dbe7f5;
+  border-radius: 8px;
+  background: #f9fbff;
+  padding: 12px;
+}
+
+.paperdaily-status-grid span,
+.paperdaily-status-grid strong,
+.paperdaily-status-grid em {
+  display: block;
+}
+
+.paperdaily-status-grid span {
+  color: #66809f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.paperdaily-status-grid strong {
+  margin: 7px 0 3px;
+  color: #1f406c;
+  font-size: 14px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.paperdaily-status-grid em {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paperdaily-run-pane,
+.paperdaily-digest-pane,
+.paperdaily-note-pane {
+  padding: 16px;
+}
+
+.paperdaily-run-controls {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.1fr) minmax(128px, 1fr) minmax(128px, 1fr) 112px auto;
+  align-items: end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.paperdaily-run-controls label,
+.paperdaily-topic-form-grid label {
+  display: grid;
+  gap: 5px;
+  color: #50647e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.paperdaily-run-controls input,
+.paperdaily-run-controls select,
+.paperdaily-topic-form-grid input,
+.paperdaily-topic-form-grid textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid #cfddeb;
+  border-radius: 6px;
+  background: #fff;
+  padding: 7px 9px;
+  color: #273d5f;
+  font: inherit;
+  font-weight: 500;
+}
+
+.paperdaily-run-controls textarea,
+.paperdaily-topic-form-grid textarea {
+  min-height: 74px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.paperdaily-run-controls input:disabled {
+  border-color: #e2e9f2;
+  background: #f5f7fa;
+  color: #99a8bb;
+}
+
+.paperdaily-run-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.paperdaily-run-actions button {
+  min-height: 34px;
+  white-space: nowrap;
+}
+
+.paperdaily-task-status {
+  min-height: 20px;
+  margin-top: 12px;
+  color: #607693;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.paperdaily-task-status.running {
+  color: #9a6400;
+}
+
+.paperdaily-task-status.error {
+  color: #b42318;
+}
+
+.paperdaily-digest-list {
+  display: grid;
+  gap: 0;
+  margin-top: 12px;
+}
+
+.paperdaily-paper-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 12px;
+  border-top: 1px solid #e7edf6;
+  padding: 14px 0;
+}
+
+.paperdaily-paper-row:first-child {
+  border-top: 0;
+}
+
+.paperdaily-rank {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #cde0fb;
+  border-radius: 6px;
+  color: var(--blue);
+  background: #eff6ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.paperdaily-paper-copy {
+  min-width: 0;
+}
+
+.paperdaily-paper-copy h3 {
+  margin: 0;
+  color: #203b61;
+  font-size: 15px;
+  line-height: 1.38;
+}
+
+.paperdaily-paper-copy .paperdaily-meta,
+.paperdaily-paper-copy .paperdaily-reason,
+.paperdaily-paper-copy .paperdaily-summary {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.paperdaily-paper-copy .paperdaily-summary {
+  color: #415a7b;
+}
+
+.paperdaily-paper-links,
+.paperdaily-paper-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.paperdaily-paper-links {
+  margin-top: 9px;
+}
+
+.paperdaily-paper-links a,
+.paperdaily-paper-actions button {
+  min-height: 30px;
+  border: 1px solid #d5e2f2;
+  border-radius: 6px;
+  background: #fff;
+  padding: 5px 8px;
+  color: #315f9a;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+.paperdaily-paper-links a:hover,
+.paperdaily-paper-actions button:hover {
+  border-color: #a7c8f8;
+  background: #f1f6ff;
+}
+
+.paperdaily-paper-actions {
+  align-content: start;
+  justify-content: end;
+  min-width: 152px;
+}
+
+.paperdaily-paper-actions button[data-action="irrelevant"] {
+  color: #a12f2f;
+}
+
+.paperdaily-paper-actions button[data-action="codex"] {
+  border-color: #8eb8f6;
+  background: #eaf3ff;
+  color: #175aa9;
+}
+
+.paperdaily-note-pane {
+  min-height: 360px;
+}
+
+.paperdaily-note-pane .markdown-body {
+  max-height: 760px;
+  overflow: auto;
+}
+
+.paperdaily-topic-dialog {
+  width: min(780px, calc(100vw - 40px));
+  max-height: min(860px, calc(100vh - 40px));
+  overflow: auto;
+  border: 1px solid #cbd9ea;
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(22, 44, 78, 0.2);
+  padding: 0;
+}
+
+.paperdaily-topic-dialog::backdrop {
+  background: rgba(23, 42, 68, 0.34);
+}
+
+.paperdaily-topic-dialog form {
+  padding: 18px;
+}
+
+.dialog-head,
+.dialog-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+
+.dialog-head h2 {
+  margin: 0;
+  color: #203b61;
+  font-size: 18px;
+}
+
+.paperdaily-topic-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.paperdaily-topic-form-grid .span-two {
+  grid-column: 1 / -1;
+}
+
+.paperdaily-topic-form-grid .checkline {
+  align-self: end;
+  min-height: 34px;
+}
+
+.paperdaily-topic-form-grid .checkline input {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+}
+
+.dialog-actions {
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  margin-top: 18px;
+}
+
+.dialog-actions .danger {
+  border-color: #f2c4c0;
+  color: #a12f2f;
+}
+
+@media (max-width: 1240px) {
+  .paperdaily-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .paperdaily-topics-pane {
+    position: static;
+  }
+
+  .paperdaily-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .paperdaily-run-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .paperdaily-run-actions {
+    grid-column: 1 / -1;
+  }
+
+  .paperdaily-digest-toolbar {
+    justify-content: start;
+  }
+}
+
 @media (max-width: 1240px) {
   body {
     min-width: 1024px;
@@ -3220,6 +3713,7 @@ body.chat-view .source-list.empty {
   }
 
   .recommend-layout,
+  .paperdaily-layout,
   .wiki-layout,
   .chat-layout {
     grid-template-columns: 1fr;

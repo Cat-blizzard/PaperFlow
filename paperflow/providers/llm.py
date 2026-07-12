@@ -16,6 +16,7 @@ from typing import Iterator, Optional, Protocol
 import requests
 
 from .config import ProviderConfig, load_provider_config
+from .credentials import resolve_openai_compatible_credentials
 
 
 @dataclass(frozen=True)
@@ -378,10 +379,9 @@ def build_llm_provider(config: Optional[ProviderConfig] = None) -> LLMProvider:
     cfg = config or load_provider_config()
 
     if cfg.llm_provider == "openai":
-        api_key = os.environ.get("OPENAI_API_KEY", "")
+        api_key, base_url = resolve_openai_compatible_credentials("llm")
         if _is_placeholder(api_key):
             return MockLLM()
-        base_url = os.environ.get("OPENAI_BASE_URL") or None
         timeout = float(os.environ.get("OPENAI_API_TIMEOUT", "60") or 60)
         return OpenAILLM(model=cfg.llm_model, api_key=api_key, base_url=base_url, timeout=timeout)
 

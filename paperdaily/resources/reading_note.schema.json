@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PaperDaily evidence-grounded reading note",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "basic_info": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {"type": "string"},
+        "title_zh": {"type": "string"},
+        "authors": {"type": "array", "items": {"type": "string"}},
+        "arxiv_id": {"type": "string"},
+        "paper_url": {"type": "string"},
+        "code_url": {"type": "string"},
+        "topics": {"type": "array", "items": {"type": "string"}}
+      },
+      "required": ["title", "title_zh", "authors", "arxiv_id", "paper_url", "code_url", "topics"]
+    },
+    "one_sentence_conclusion": {"type": "string"},
+    "research_problem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "problem": {"type": "string"},
+        "why_existing_methods_are_insufficient": {"type": "string"},
+        "research_value": {"type": "string"}
+      },
+      "required": ["problem", "why_existing_methods_are_insufficient", "research_value"]
+    },
+    "core_contributions": {"type": "array", "items": {"type": "string"}},
+    "method": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "overview": {"type": "string"},
+        "input": {"type": "string"},
+        "output": {"type": "string"},
+        "architecture": {"type": "string"},
+        "action_representation": {"type": "string"},
+        "training_objective": {"type": "string"},
+        "inference": {"type": "string"}
+      },
+      "required": ["overview", "input", "output", "architecture", "action_representation", "training_objective", "inference"]
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "training_data": {"type": "string"},
+        "scale": {"type": "string"},
+        "embodiments": {"type": "string"},
+        "real_data": {"type": "string"},
+        "simulation_data": {"type": "string"},
+        "cross_embodiment": {"type": "string"}
+      },
+      "required": ["training_data", "scale", "embodiments", "real_data", "simulation_data", "cross_embodiment"]
+    },
+    "experiments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "experiment": {"type": "string"},
+          "baseline": {"type": "string"},
+          "result": {"type": "string"},
+          "improvement": {"type": "string"},
+          "evidence_ref": {"type": "string"}
+        },
+        "required": ["experiment", "baseline", "result", "improvement", "evidence_ref"]
+      }
+    },
+    "ablations": {"type": "array", "items": {"type": "string"}},
+    "relation_to_user_research": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vla": {"type": "string"},
+        "world_action_model": {"type": "string"},
+        "robot_foundation_model": {"type": "string"},
+        "reusable_components": {"type": "array", "items": {"type": "string"}}
+      },
+      "required": ["vla", "world_action_model", "robot_foundation_model", "reusable_components"]
+    },
+    "limitations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "author_stated": {"type": "array", "items": {"type": "string"}},
+        "inferred": {"type": "array", "items": {"type": "string"}}
+      },
+      "required": ["author_stated", "inferred"]
+    },
+    "reproduction": {"type": "array", "items": {"type": "string"}},
+    "executable_ideas": {"type": "array", "items": {"type": "string"}},
+    "unanswered_questions": {"type": "array", "items": {"type": "string"}},
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string"},
+          "claim": {"type": "string"},
+          "quote": {"type": "string"},
+          "section": {"type": "string"},
+          "page": {"type": ["integer", "null"]},
+          "table": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "required": ["id", "claim", "quote", "section", "page", "table", "confidence"]
+      }
+    }
+  },
+  "required": [
+    "basic_info",
+    "one_sentence_conclusion",
+    "research_problem",
+    "core_contributions",
+    "method",
+    "data",
+    "experiments",
+    "ablations",
+    "relation_to_user_research",
+    "limitations",
+    "reproduction",
+    "executable_ideas",
+    "unanswered_questions",
+    "evidence"
+  ]
+}

@@ -23,6 +23,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from deployments.desktop.shared import agents  # noqa: E402
+from deployments.desktop.shared.paperdaily import PaperDailyGui  # noqa: E402
+
+
+paperdaily_gui = PaperDailyGui()
 
 
 ApiHandler = Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]
@@ -231,6 +235,32 @@ def _api_must_read(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[
     return agents.list_must_read(_required_user(query_params))
 
 
+def _api_paperdaily_status(_query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
+    return paperdaily_gui.status()
+
+
+def _api_paperdaily_digest(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
+    return paperdaily_gui.latest_digest(str(query_params.get("run_id") or "").strip() or None)
+
+
+def _api_paperdaily_digests(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
+    return paperdaily_gui.list_digests(limit=int(query_params.get("limit") or 30))
+
+
+def _api_paperdaily_task(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
+    task_id = str(query_params.get("task_id") or "").strip()
+    if not task_id:
+        raise ValueError("task_id is required")
+    task = paperdaily_gui.task(task_id)
+    if task is None:
+        raise ValueError("未找到 PaperDaily 任务")
+    return {"task": task}
+
+
+def _api_paperdaily_note(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
+    return paperdaily_gui.read_note(str(query_params.get("arxiv_id") or "").strip())
+
+
 def _api_create_profile(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
     return agents.create_or_update_profile(
         user_id=str(body.get("user_id") or "").strip(),
@@ -437,6 +467,40 @@ def _api_must_read_update(_query_params: Dict[str, Any], body: Dict[str, Any]) -
     )
 
 
+def _api_paperdaily_topics(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
+    return paperdaily_gui.update_topic(str(body.get("action") or "save"), body)
+
+
+def _api_paperdaily_run(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
+    raw_limit = body.get("limit")
+    limit = _optional_positive_int(raw_limit) if raw_limit not in (None, "") else None
+    return {
+        "task": paperdaily_gui.start_digest_task(
+            choice=str(body.get("choice") or "recommended"),
+            dry_run=bool(body.get("dry_run")),
+            limit=limit,
+            custom_start=str(body.get("custom_start") or "").strip() or None,
+            custom_end=str(body.get("custom_end") or "").strip() or None,
+        )
+    }
+
+
+def _api_paperdaily_feedback(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
+    return paperdaily_gui.record_feedback(
+        str(body.get("arxiv_id") or "").strip(),
+        str(body.get("action") or "").strip(),
+    )
+
+
+def _api_paperdaily_read(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "task": paperdaily_gui.start_codex_read(
+            str(body.get("arxiv_id") or "").strip(),
+            force_parse=bool(body.get("force_parse")),
+        )
+    }
+
+
 GET_ROUTES: Dict[str, ApiHandler] = {
     "/api/health": _api_health,
     "/api/settings": _api_settings,
@@ -457,6 +521,11 @@ GET_ROUTES: Dict[str, ApiHandler] = {
     "/api/reports/content": _api_report_content,
     "/api/read/status": _api_read_status,
     "/api/must-read": _api_must_read,
+    "/api/paperdaily/status": _api_paperdaily_status,
+    "/api/paperdaily/digest": _api_paperdaily_digest,
+    "/api/paperdaily/digests": _api_paperdaily_digests,
+    "/api/paperdaily/task": _api_paperdaily_task,
+    "/api/paperdaily/note": _api_paperdaily_note,
 }
 
 POST_ROUTES: Dict[str, ApiHandler] = {
@@ -482,6 +551,10 @@ POST_ROUTES: Dict[str, ApiHandler] = {
     "/api/wiki/node": _api_wiki_node,
     "/api/export": _api_export,
     "/api/must-read": _api_must_read_update,
+    "/api/paperdaily/topics": _api_paperdaily_topics,
+    "/api/paperdaily/run": _api_paperdaily_run,
+    "/api/paperdaily/feedback": _api_paperdaily_feedback,
+    "/api/paperdaily/read": _api_paperdaily_read,
 }
 
 

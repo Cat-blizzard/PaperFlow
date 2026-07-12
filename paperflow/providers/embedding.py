@@ -15,6 +15,7 @@ from typing import Iterable, List, Optional, Protocol
 import requests
 
 from .config import ProviderConfig, load_provider_config
+from .credentials import resolve_openai_compatible_credentials
 
 
 class EmbeddingProvider(Protocol):
@@ -166,10 +167,9 @@ def build_embedding_provider(config: Optional[ProviderConfig] = None) -> Embeddi
     cfg = config or load_provider_config()
 
     if cfg.embed_provider == "openai":
-        api_key = os.environ.get("OPENAI_API_KEY", "")
+        api_key, base_url = resolve_openai_compatible_credentials("embed")
         if _is_placeholder(api_key):
             return HashEmbedding(dimensions=cfg.embed_dimensions)
-        base_url = os.environ.get("OPENAI_BASE_URL") or None
         timeout = float(os.environ.get("OPENAI_API_TIMEOUT", "60") or 60)
         return OpenAIEmbedding(
             model=cfg.embed_model,

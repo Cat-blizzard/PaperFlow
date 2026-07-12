@@ -56,6 +56,12 @@
     dailyTaskUserId: "",
     dailyPollToken: 0,
     dailyPolling: false,
+    paperdailyStatus: null,
+    paperdailyDigest: null,
+    paperdailyRuns: [],
+    paperdailyTaskId: "",
+    paperdailyPollToken: 0,
+    paperdailyEditingTopicId: "",
     settings: null
   };
 
@@ -81,9 +87,10 @@
         localPdf: "本地 PDF",
         arxiv: "arXiv"
       },
-      nav: { papers: "论文流", reports: "精读报告", wiki: "知识Wiki", chat: "对话", settings: "设置" },
+      nav: { papers: "论文流", paperdaily: "PaperDaily", reports: "精读报告", wiki: "知识Wiki", chat: "对话", settings: "设置" },
       views: {
         papers: { title: "论文推荐", kicker: "Today's Papers" },
+        paperdaily: { title: "PaperDaily", kicker: "Research Digest" },
         reports: { title: "精读报告", kicker: "Reading Reports" },
         wiki: { title: "知识 Wiki", kicker: "Knowledge Wiki" },
         chat: { title: "对话问答", kicker: "Chat & Ask" },
@@ -527,9 +534,10 @@
         localPdf: "Local PDF",
         arxiv: "arXiv"
       },
-      nav: { papers: "Papers", reports: "Reports", wiki: "Wiki", chat: "Chat", settings: "Settings" },
+      nav: { papers: "Papers", paperdaily: "PaperDaily", reports: "Reports", wiki: "Wiki", chat: "Chat", settings: "Settings" },
       views: {
         papers: { title: "Paper Recommendations", kicker: "Today's Papers" },
+        paperdaily: { title: "PaperDaily", kicker: "Research Digest" },
         reports: { title: "Reading Reports", kicker: "Reading Reports" },
         wiki: { title: "Knowledge Wiki", kicker: "Knowledge Wiki" },
         chat: { title: "Chat & Ask", kicker: "Chat & Ask" },
@@ -1742,6 +1750,36 @@
       && (!route || String(error?.path || "").includes(route));
   }
 
+  function demoPaperDailyDigest(dryRun = false) {
+    return {
+      dry_run: dryRun,
+      run_id: dryRun ? "preview" : "paperdaily_demo_20260712",
+      window_start: "2026-07-05",
+      window_end: "2026-07-11",
+      stats: { fetched_count: 1588, candidate_count: 63, llm_rerank_status: "demo" },
+      warnings: [],
+      output_path: dryRun ? "" : "data/output/digests/2026-07-05_2026-07-11-demo.md",
+      recommendations: [
+        {
+          arxiv_id: "2607.08182",
+          rank: 1,
+          score: 0.91,
+          title: "Cross-Embodiment Vision-Language-Action Policies",
+          authors: ["Demo Author", "Research Team"],
+          categories: ["cs.RO", "cs.AI"],
+          published: "2026-07-10",
+          abstract: "A demo paper about cross-embodiment robot policies and action representations.",
+          url: "https://arxiv.org/abs/2607.08182",
+          pdf_url: "https://arxiv.org/pdf/2607.08182",
+          matched_topics: ["embodied-vla"],
+          matched_terms: ["vision-language-action", "cross-embodiment"],
+          recommendation_reason: "与 VLA 和跨本体机器人学习方向高度相关。",
+          summary: { title_zh: "跨本体视觉语言动作策略", one_sentence_summary: "面向多种机器人本体的视觉语言动作策略。", method: "摘要未说明", contributions: [], status: "completed" }
+        }
+      ]
+    };
+  }
+
   async function demoApi(path, options = {}) {
     await new Promise((resolve) => window.setTimeout(resolve, 90));
     const url = new URL(path, window.location.origin);
@@ -1752,6 +1790,34 @@
     if (route === "/api/health") {
       return { ok: true, database_exists: true, database: "demo.db", version: "offline-demo" };
     }
+    if (route === "/api/paperdaily/status") {
+      return {
+        ok: true,
+        configured: true,
+        config_path: "data/paperdaily/config.yaml",
+        user_id: "user_demo",
+        timezone: "Asia/Shanghai",
+        enabled_topic_count: 1,
+        categories: ["cs.RO", "cs.AI", "cs.CV", "cs.LG"],
+        topics: [{ id: "embodied-vla", name: "具身智能与 VLA", description: "关注视觉语言动作模型、机器人操作与跨本体泛化。", enabled: true, arxiv_categories: ["cs.RO", "cs.AI"], exact_phrases: ["vision-language-action"], keywords: ["VLA", "OpenVLA"], context_keywords: ["robot", "manipulation"], negative_keywords: [], daily_limit: 12, minimum_score: 0.25 }],
+        catchup: { has_work: true, last_completed_date: "2026-07-04", missing_start: "2026-07-05", gap_days: 7, recommended_choice: "7d", recommended_window: { start_date: "2026-07-05", end_date: "2026-07-11", days: 7 } },
+        state: { last_completed_window_end: "2026-07-04" },
+        latest_run: { run_id: "paperdaily_demo_20260712", status: "completed", window_start: "2026-07-05", window_end: "2026-07-11", recommendation_count: 1, summary_count: 1 },
+        providers: { llm: { name: "demo", model: "demo" }, embedding: { name: "demo", model: "demo" }, agents: [{ provider: "codex", ready: true, sandbox: "read-only" }] }
+      };
+    }
+    if (route === "/api/paperdaily/digest") return { ok: true, digest: { run: { run_id: "paperdaily_demo_20260712", status: "completed", window_start: "2026-07-05", window_end: "2026-07-11", recommendation_count: 1, summary_count: 1 }, recommendations: demoPaperDailyDigest(false).recommendations } };
+    if (route === "/api/paperdaily/topics" || route === "/api/paperdaily/feedback") return { ok: true, topics: [], feedback: { action: body.action || "interested" } };
+    if (route === "/api/paperdaily/run") {
+      state.paperdailyDemoTask = { kind: body.dry_run ? "preview" : "digest", result: demoPaperDailyDigest(Boolean(body.dry_run)) };
+      return { ok: true, task: { task_id: "paperdaily-demo-task", kind: state.paperdailyDemoTask.kind, status: "running" } };
+    }
+    if (route === "/api/paperdaily/read") {
+      state.paperdailyDemoTask = { kind: "codex_read", result: { arxiv_id: body.arxiv_id, provider: "codex", note_path: "data/output/notes/demo.md" } };
+      return { ok: true, task: { task_id: "paperdaily-demo-task", kind: "codex_read", status: "running" } };
+    }
+    if (route === "/api/paperdaily/task") return { ok: true, task: { task_id: "paperdaily-demo-task", status: "completed", ...(state.paperdailyDemoTask || { kind: "preview", result: demoPaperDailyDigest(true) }) } };
+    if (route === "/api/paperdaily/note") return { ok: true, note: { arxiv_id: url.searchParams.get("arxiv_id") || "2607.08182", path: "data/output/notes/demo.md", content: "# Codex 精读笔记\n\n## 一句话结论\n\n这是离线预览中的结构化阅读笔记。\n\n## 核心方法\n\n- 仅在用户点击后才执行精读。" } };
     if (route === "/api/users") {
       return { ok: true, users: ["user_demo", "user_lab", "user_founder"] };
     }
@@ -2039,11 +2105,346 @@
     if (name === "wiki" && !options.skipLoad) runAction(loadWiki, "加载 Wiki");
     if (name === "chat" && !options.skipLoad) runAction(() => loadChatSessions({ openLatest: true }), "加载历史对话");
     if (name === "settings") runAction(loadSettings, "加载设置");
+    if (name === "paperdaily" && !options.skipLoad) runAction(() => loadPaperDaily({ loadDigest: true }), "加载 PaperDaily");
     if (name === "papers") {
       resumeDailyTask().catch((error) => {
         console.error(error);
       });
     }
+  }
+
+  function paperdailyList(value) {
+    return String(value || "")
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function paperdailyTopicById(topicId) {
+    return (state.paperdailyStatus?.topics || []).find((topic) => topic.id === topicId) || null;
+  }
+
+  function setPaperDailyTaskStatus(message, mode = "") {
+    const target = $("pdTaskStatus");
+    if (!target) return;
+    target.textContent = message || "";
+    target.className = `paperdaily-task-status ${mode}`.trim();
+  }
+
+  function updatePaperDailyCustomDates() {
+    const custom = $("pdWindowChoice")?.value === "custom";
+    [$("pdCustomStart"), $("pdCustomEnd")].forEach((input) => {
+      if (input) input.disabled = !custom;
+    });
+  }
+
+  function renderPaperDailyTopics(topics) {
+    const target = $("pdTopicsList");
+    if (!target) return;
+    const items = Array.isArray(topics) ? topics : [];
+    if (!items.length) {
+      target.className = "paperdaily-topics-list empty";
+      target.textContent = "还没有研究话题。添加后才能开始检索。";
+      return;
+    }
+    target.className = "paperdaily-topics-list";
+    target.innerHTML = items.map((topic) => {
+      const categories = (topic.arxiv_categories || []).join(" · ") || "未设置分类";
+      return `
+        <article class="paperdaily-topic-row">
+          <input type="checkbox" data-pd-topic-enable="${escapeHtml(topic.id)}" ${topic.enabled ? "checked" : ""} aria-label="启用 ${escapeHtml(topic.name)}">
+          <button type="button" class="paperdaily-topic-copy" data-pd-topic-edit="${escapeHtml(topic.id)}" title="编辑 ${escapeHtml(topic.name)}">
+            <strong>${escapeHtml(topic.name)}</strong>
+            <span>${escapeHtml(categories)}</span>
+          </button>
+          <button type="button" class="icon-button" data-pd-topic-edit="${escapeHtml(topic.id)}" title="编辑 ${escapeHtml(topic.name)}" aria-label="编辑 ${escapeHtml(topic.name)}">⋯</button>
+        </article>`;
+    }).join("");
+  }
+
+  function renderPaperDailyStatus(data) {
+    state.paperdailyStatus = data;
+    const configured = Boolean(data?.configured);
+    const catchup = data?.catchup || {};
+    const recommended = catchup.recommended_window || {};
+    const llm = data?.providers?.llm || {};
+    const embedding = data?.providers?.embedding || {};
+    const codex = (data?.providers?.agents || []).find((item) => item.provider === "codex") || {};
+    const latest = data?.latest_run || null;
+    $("pdConfigHint").textContent = configured
+      ? `配置：${data.config_path} · PaperDaily 用户：${data.user_id}`
+      : (data?.message || "请先创建 PaperDaily 配置。");
+    $("pdWatermark").textContent = data?.state?.last_completed_window_end || "尚未完成";
+    $("pdWatermarkDetail").textContent = configured ? `${data?.enabled_topic_count || 0} 个启用话题` : "需要初始化";
+    $("pdCatchupRange").textContent = catchup.has_work
+      ? `${recommended.start_date || "-"} 至 ${recommended.end_date || "-"}`
+      : "已处理到最新";
+    $("pdCatchupDetail").textContent = catchup.has_work
+      ? `遗漏 ${catchup.gap_days || 0} 天 · 建议 ${catchup.recommended_choice || "-"}`
+      : "没有待处理论文";
+    $("pdLlmProvider").textContent = `${llm.name || "-"}:${llm.model || "-"}`;
+    $("pdEmbedProvider").textContent = `Embedding：${embedding.name || "-"}:${embedding.model || "-"}`;
+    $("pdCodexProvider").textContent = codex.ready ? "已就绪" : "未就绪";
+    $("pdDigestCount").textContent = latest ? `最近日报 ${latest.recommendation_count || 0} 篇` : "暂无日报";
+    ["pdAddTopicBtn", "pdPreviewBtn", "pdRunBtn", "pdLoadLatestBtn", "pdDigestRunSelect"].forEach((id) => {
+      const button = $(id);
+      if (button) button.disabled = !configured;
+    });
+    renderPaperDailyTopics(data?.topics || []);
+  }
+
+  function paperDailyRunLabel(run) {
+    const range = `${run.window_start || "-"} 至 ${run.window_end || "-"}`;
+    const count = Number(run.recommendation_count || 0);
+    return `${range} · ${count} 篇推荐`;
+  }
+
+  function renderPaperDailyRuns(runs, selectedRunId = "") {
+    const select = $("pdDigestRunSelect");
+    if (!select) return;
+    state.paperdailyRuns = Array.isArray(runs) ? runs : [];
+    if (!state.paperdailyRuns.length) {
+      select.disabled = true;
+      select.innerHTML = '<option value="">暂无完成日报</option>';
+      return;
+    }
+    const currentRunId = selectedRunId || state.paperdailyDigest?.run?.run_id || state.paperdailyRuns[0].run_id;
+    select.disabled = false;
+    select.innerHTML = state.paperdailyRuns.map((run) => `
+      <option value="${escapeHtml(run.run_id)}">${escapeHtml(paperDailyRunLabel(run))}</option>`
+    ).join("");
+    select.value = state.paperdailyRuns.some((run) => run.run_id === currentRunId)
+      ? currentRunId
+      : state.paperdailyRuns[0].run_id;
+  }
+
+  function paperdailyAuthors(value) {
+    return (Array.isArray(value) ? value : [])
+      .map((author) => typeof author === "string" ? author : author?.name)
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(", ");
+  }
+
+  function renderPaperDailyDigest(digest, options = {}) {
+    const target = $("pdDigestList");
+    if (!target) return;
+    state.paperdailyDigest = digest || null;
+    const run = digest?.run || digest || {};
+    const papers = Array.isArray(digest?.recommendations) ? digest.recommendations : [];
+    const isPreview = Boolean(options.preview || digest?.dry_run);
+    $("pdDigestMeta").textContent = papers.length
+      ? `${isPreview ? "预估" : "完成"}范围：${run.window_start || digest?.window_start || "-"} 至 ${run.window_end || digest?.window_end || "-"} · ${papers.length} 篇推荐`
+      : "暂无完成的日报。先预估或生成一次检索结果。";
+    if (!papers.length) {
+      target.className = "paperdaily-digest-list empty";
+      target.textContent = "没有可展示的推荐论文。";
+      return;
+    }
+    target.className = "paperdaily-digest-list";
+    target.innerHTML = papers.map((paper, index) => {
+      const summary = paper.summary || {};
+      const title = summary.title_zh || paper.title || "Untitled paper";
+      const meta = [paper.arxiv_id, paperdailyAuthors(paper.authors), (paper.categories || []).join(" · ")]
+        .filter(Boolean)
+        .join(" · ");
+      const reason = paper.recommendation_reason || (paper.matched_terms || []).join("、");
+      return `
+        <article class="paperdaily-paper-row" data-pd-arxiv-id="${escapeHtml(paper.arxiv_id)}">
+          <div class="paperdaily-rank">${escapeHtml(String(paper.rank || index + 1))}</div>
+          <div class="paperdaily-paper-copy">
+            <h3>${escapeHtml(title)}</h3>
+            <p class="paperdaily-meta">${escapeHtml(meta)}</p>
+            ${summary.one_sentence_summary ? `<p class="paperdaily-summary">${escapeHtml(summary.one_sentence_summary)}</p>` : ""}
+            ${reason ? `<p class="paperdaily-reason">推荐原因：${escapeHtml(reason)}</p>` : ""}
+            <div class="paperdaily-paper-links">
+              <a href="${escapeHtml(paper.url || "")}" target="_blank" rel="noreferrer">论文</a>
+              <a href="${escapeHtml(paper.pdf_url || "")}" target="_blank" rel="noreferrer">PDF</a>
+            </div>
+          </div>
+          <div class="paperdaily-paper-actions">
+            <button type="button" data-pd-paper-action="interested" data-arxiv-id="${escapeHtml(paper.arxiv_id)}">感兴趣</button>
+            <button type="button" data-pd-paper-action="later" data-arxiv-id="${escapeHtml(paper.arxiv_id)}">稍后</button>
+            <button type="button" data-pd-paper-action="irrelevant" data-arxiv-id="${escapeHtml(paper.arxiv_id)}">不相关</button>
+            <button type="button" data-pd-paper-action="codex" data-arxiv-id="${escapeHtml(paper.arxiv_id)}">Codex 精读</button>
+          </div>
+        </article>`;
+    }).join("");
+  }
+
+  async function loadPaperDailyDigest(runId = "") {
+    const query = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
+    const data = await api(`/api/paperdaily/digest${query}`);
+    renderPaperDailyDigest(data.digest);
+    if (data.digest?.run?.run_id && $("pdDigestRunSelect")) {
+      $("pdDigestRunSelect").value = data.digest.run.run_id;
+    }
+    return data;
+  }
+
+  async function loadPaperDailyRuns(selectedRunId = "") {
+    const data = await api("/api/paperdaily/digests?limit=30");
+    renderPaperDailyRuns(data.runs || [], selectedRunId);
+    return data.runs || [];
+  }
+
+  async function loadPaperDaily(options = {}) {
+    const data = await api("/api/paperdaily/status");
+    renderPaperDailyStatus(data);
+    if (data.configured && options.loadDigest !== false) {
+      const runs = await loadPaperDailyRuns();
+      await loadPaperDailyDigest(runs[0]?.run_id || "");
+    }
+    return data;
+  }
+
+  async function startPaperDailyDigest(dryRun) {
+    const choice = $("pdWindowChoice").value;
+    const customStart = $("pdCustomStart").value;
+    const customEnd = $("pdCustomEnd").value;
+    if (choice === "custom" && !customStart) {
+      throw new Error("自定义范围需要选择开始日期。 ");
+    }
+    const data = await api("/api/paperdaily/run", {
+      method: "POST",
+      body: JSON.stringify({
+        choice,
+        dry_run: dryRun,
+        limit: Number($("pdLimit").value || 12),
+        custom_start: customStart,
+        custom_end: customEnd
+      })
+    });
+    setPaperDailyTaskStatus(dryRun ? "正在抓取并估算候选论文…" : "正在检索、排序并生成日报…", "running");
+    pollPaperDailyTask(data.task.task_id).catch((error) => {
+      setPaperDailyTaskStatus(error.message || String(error), "error");
+    });
+  }
+
+  async function startPaperDailyCodexRead(arxivId) {
+    const data = await api("/api/paperdaily/read", {
+      method: "POST",
+      body: JSON.stringify({ arxiv_id: arxivId })
+    });
+    setPaperDailyTaskStatus(`Codex 正在精读 ${arxivId}，完成后会写入本地阅读笔记。`, "running");
+    pollPaperDailyTask(data.task.task_id).catch((error) => {
+      setPaperDailyTaskStatus(error.message || String(error), "error");
+    });
+  }
+
+  async function pollPaperDailyTask(taskId) {
+    const token = ++state.paperdailyPollToken;
+    state.paperdailyTaskId = taskId;
+    while (token === state.paperdailyPollToken) {
+      const data = await api(`/api/paperdaily/task?task_id=${encodeURIComponent(taskId)}`);
+      const task = data.task || {};
+      if (task.status === "running") {
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        continue;
+      }
+      state.paperdailyTaskId = "";
+      if (task.status !== "completed") {
+        throw new Error(task.error || "PaperDaily 任务失败。");
+      }
+      if (task.kind === "preview") {
+        renderPaperDailyDigest(task.result, { preview: true });
+        setPaperDailyTaskStatus(`预估完成：${task.result?.recommendations?.length || 0} 篇候选，不会写入 watermark。`);
+      } else if (task.kind === "digest") {
+        await loadPaperDaily({ loadDigest: true });
+        setPaperDailyTaskStatus(`日报已生成：${task.result?.recommendations?.length || 0} 篇推荐。`);
+      } else if (task.kind === "codex_read") {
+        await loadPaperDailyNote(task.result?.arxiv_id || "");
+        setPaperDailyTaskStatus(`Codex 精读完成：${task.result?.arxiv_id || "论文"}。`);
+      }
+      return task;
+    }
+  }
+
+  async function recordPaperDailyFeedback(arxivId, action) {
+    await api("/api/paperdaily/feedback", {
+      method: "POST",
+      body: JSON.stringify({ arxiv_id: arxivId, action })
+    });
+    setPaperDailyTaskStatus(`已记录 ${arxivId} 的反馈：${action}。`);
+    showFeedbackToast("success", "反馈已记录", "这会影响后续 PaperDaily 推荐。 ");
+  }
+
+  async function loadPaperDailyNote(arxivId) {
+    const data = await api(`/api/paperdaily/note?arxiv_id=${encodeURIComponent(arxivId)}`);
+    if (!data.note) {
+      throw new Error("未找到已生成的阅读笔记。 ");
+    }
+    $("pdNotePane").hidden = false;
+    $("pdNoteTitle").textContent = `${data.note.arxiv_id} · Codex 阅读笔记`;
+    $("pdNoteMeta").textContent = data.note.path || "";
+    $("pdNoteBody").innerHTML = renderMarkdown(data.note.content || "");
+    $("pdNotePane").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function openPaperDailyTopic(topic = null) {
+    const dialog = $("pdTopicDialog");
+    const editing = Boolean(topic);
+    state.paperdailyEditingTopicId = topic?.id || "";
+    $("pdTopicDialogTitle").textContent = editing ? `编辑话题：${topic.name}` : "添加研究话题";
+    $("pdTopicId").value = topic?.id || "";
+    $("pdTopicId").readOnly = editing;
+    $("pdTopicName").value = topic?.name || "";
+    $("pdTopicDescription").value = topic?.description || "";
+    $("pdTopicCategories").value = (topic?.arxiv_categories || []).join(", ");
+    $("pdTopicPhrases").value = (topic?.exact_phrases || []).join(", ");
+    $("pdTopicKeywords").value = (topic?.keywords || []).join(", ");
+    $("pdTopicContext").value = (topic?.context_keywords || []).join(", ");
+    $("pdTopicNegative").value = (topic?.negative_keywords || []).join(", ");
+    $("pdTopicDailyLimit").value = topic?.daily_limit || 12;
+    $("pdTopicMinimumScore").value = topic?.minimum_score ?? 0.25;
+    $("pdTopicEnabled").checked = topic?.enabled ?? true;
+    $("pdTopicDeleteBtn").hidden = !editing;
+    dialog.showModal();
+  }
+
+  function closePaperDailyTopic() {
+    $("pdTopicDialog")?.close();
+    state.paperdailyEditingTopicId = "";
+  }
+
+  function paperDailyTopicFormPayload() {
+    return {
+      id: $("pdTopicId").value.trim(),
+      name: $("pdTopicName").value.trim(),
+      description: $("pdTopicDescription").value.trim(),
+      enabled: $("pdTopicEnabled").checked,
+      arxiv_categories: paperdailyList($("pdTopicCategories").value),
+      exact_phrases: paperdailyList($("pdTopicPhrases").value),
+      keywords: paperdailyList($("pdTopicKeywords").value),
+      context_keywords: paperdailyList($("pdTopicContext").value),
+      negative_keywords: paperdailyList($("pdTopicNegative").value),
+      daily_limit: Number($("pdTopicDailyLimit").value || 12),
+      minimum_score: Number($("pdTopicMinimumScore").value || 0.25)
+    };
+  }
+
+  async function savePaperDailyTopic() {
+    const form = $("pdTopicForm");
+    if (!form.reportValidity()) return;
+    const data = await api("/api/paperdaily/topics", {
+      method: "POST",
+      body: JSON.stringify({ action: "save", topic: paperDailyTopicFormPayload() })
+    });
+    closePaperDailyTopic();
+    await loadPaperDaily({ loadDigest: false });
+    showFeedbackToast("success", "话题已保存", data.topic?.name || "研究话题已更新。");
+  }
+
+  async function deletePaperDailyTopic() {
+    const topicId = state.paperdailyEditingTopicId;
+    if (!topicId || !window.confirm("删除该研究话题？历史日报和反馈会保留。")) return;
+    await api("/api/paperdaily/topics", {
+      method: "POST",
+      body: JSON.stringify({ action: "delete", topic_id: topicId })
+    });
+    closePaperDailyTopic();
+    await loadPaperDaily({ loadDigest: false });
+    showFeedbackToast("success", "话题已删除", topicId);
   }
 
   function currentUser() {
@@ -5512,6 +5913,59 @@
     $("submitFeedbackBtn").addEventListener("click", () => runAction(() => submitFeedback(false), "提交反馈"));
     $("submitAndReadBtn").addEventListener("click", () => runAction(() => submitFeedback(true), "生成报告"));
 
+    $("pdRefreshBtn")?.addEventListener("click", () => runAction(() => loadPaperDaily({ loadDigest: true }), "加载 PaperDaily"));
+    $("pdLoadLatestBtn")?.addEventListener("click", () => runAction(
+      () => loadPaperDailyDigest($("pdDigestRunSelect")?.value || ""),
+      "加载日报"
+    ));
+    $("pdDigestRunSelect")?.addEventListener("change", (event) => runAction(
+      () => loadPaperDailyDigest(event.target.value),
+      "加载日报"
+    ));
+    $("pdWindowChoice")?.addEventListener("change", updatePaperDailyCustomDates);
+    $("pdPreviewBtn")?.addEventListener("click", () => runAction(() => startPaperDailyDigest(true), "预估 PaperDaily"));
+    $("pdRunBtn")?.addEventListener("click", () => runAction(() => startPaperDailyDigest(false), "生成 PaperDaily 日报"));
+    $("pdAddTopicBtn")?.addEventListener("click", () => openPaperDailyTopic());
+    $("pdTopicsList")?.addEventListener("click", (event) => {
+      const edit = event.target.closest("[data-pd-topic-edit]");
+      if (!edit) return;
+      const topic = paperdailyTopicById(edit.dataset.pdTopicEdit);
+      if (topic) openPaperDailyTopic(topic);
+    });
+    $("pdTopicsList")?.addEventListener("change", (event) => {
+      const toggle = event.target.closest("[data-pd-topic-enable]");
+      if (!toggle) return;
+      runAction(async () => {
+        await api("/api/paperdaily/topics", {
+          method: "POST",
+          body: JSON.stringify({ action: "enabled", topic_id: toggle.dataset.pdTopicEnable, enabled: toggle.checked })
+        });
+        await loadPaperDaily({ loadDigest: false });
+      }, "更新研究话题");
+    });
+    $("pdDigestList")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-pd-paper-action]");
+      if (!button) return;
+      const arxivId = button.dataset.arxivId;
+      const action = button.dataset.pdPaperAction;
+      if (!arxivId || !action) return;
+      if (action === "codex") {
+        runAction(() => startPaperDailyCodexRead(arxivId), "启动 Codex 精读");
+      } else {
+        runAction(() => recordPaperDailyFeedback(arxivId, action), "记录 PaperDaily 反馈");
+      }
+    });
+    $("pdCloseNoteBtn")?.addEventListener("click", () => {
+      $("pdNotePane").hidden = true;
+    });
+    $("pdTopicCancelBtn")?.addEventListener("click", closePaperDailyTopic);
+    $("pdTopicCancelFooterBtn")?.addEventListener("click", closePaperDailyTopic);
+    $("pdTopicDeleteBtn")?.addEventListener("click", () => runAction(deletePaperDailyTopic, "删除研究话题"));
+    $("pdTopicForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      runAction(savePaperDailyTopic, "保存研究话题");
+    });
+
     $("refreshReportsBtn").addEventListener("click", () => runAction(() => refreshReports({ keepSelection: false }), "刷新报告"));
     $("reportDays").addEventListener("change", () => runAction(() => refreshReports({ keepSelection: false }), "筛选报告"));
     $("reportDate").addEventListener("change", () => runAction(() => refreshReports({ keepSelection: false }), "筛选报告"));
@@ -5828,6 +6282,7 @@
     await loadWiki();
     await loadSettings();
     await resumeDailyTask();
+    updatePaperDailyCustomDates();
     const initialView = window.location.hash.slice(1) || "papers";
     setView(document.getElementById(initialView) ? initialView : "papers", false);
   }

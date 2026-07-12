@@ -29,9 +29,31 @@ PAPERFLOW_LLM_MODEL=gpt-4o-mini
 PAPERFLOW_EMBED_PROVIDER=openai
 PAPERFLOW_EMBED_MODEL=text-embedding-3-small
 
-OPENAI_API_KEY=sk-...
-# OPENAI_BASE_URL=https://your-openai-compatible-gateway/v1
+PAPERFLOW_LLM_API_KEY=sk-...
+PAPERFLOW_EMBED_API_KEY=sk-...
+# PAPERFLOW_LLM_BASE_URL=https://your-llm-gateway/v1
+# PAPERFLOW_EMBED_BASE_URL=https://your-embedding-gateway/v1
 ```
+
+DeepSeek LLM plus a separate OpenAI-compatible BGE-M3 embedding service:
+
+```env
+PAPERFLOW_LLM_PROVIDER=openai
+PAPERFLOW_LLM_MODEL=deepseek-v4-flash
+PAPERFLOW_LLM_API_KEY=your-deepseek-api-key
+PAPERFLOW_LLM_BASE_URL=https://api.deepseek.com
+
+PAPERFLOW_EMBED_PROVIDER=openai
+PAPERFLOW_EMBED_MODEL=BAAI/bge-m3
+PAPERFLOW_EMBED_DIMENSIONS=1024
+PAPERFLOW_EMBED_API_KEY=your-embedding-api-key
+PAPERFLOW_EMBED_BASE_URL=https://your-bge-m3-compatible-endpoint/v1
+```
+
+DeepSeek provides the Chat Completions side in this recipe; the embedding
+endpoint must independently support the OpenAI embeddings API and the chosen
+`BAAI/bge-m3` model. No `OPENAI_API_KEY` is needed for this split setup, so a
+shared-login Codex CLI remains independent.
 
 No-download smoke-test setup:
 
@@ -88,14 +110,34 @@ that production providers are configured correctly.
 ## OpenAI-compatible API
 
 Used when `PAPERFLOW_LLM_PROVIDER=openai` or `PAPERFLOW_EMBED_PROVIDER=openai`.
-Any OpenAI-compatible gateway works (OpenAI, DashScope, Azure, vLLM, etc.) by
-setting `OPENAI_BASE_URL`.
+Any OpenAI-compatible gateway works (OpenAI, DeepSeek, DashScope, Azure,
+vLLM, etc.). Credentials are resolved independently so the LLM gateway does
+not have to offer embeddings.
 
-| Variable               | Purpose                                                |
-|------------------------|--------------------------------------------------------|
-| `OPENAI_API_KEY`       | API key for the gateway                                |
-| `OPENAI_BASE_URL`      | Base URL (leave empty for OpenAI proper)               |
-| `OPENAI_API_TIMEOUT`   | Request timeout in seconds (default 60)                |
+| API path | Preferred variables | Fallback order |
+|----------|---------------------|----------------|
+| LLM | `PAPERFLOW_LLM_API_KEY`, `PAPERFLOW_LLM_BASE_URL` | `PAPERFLOW_LLM_*` -> `PAPERFLOW_OPENAI_*` -> `OPENAI_*` |
+| Embedding | `PAPERFLOW_EMBED_API_KEY`, `PAPERFLOW_EMBED_BASE_URL` | `PAPERFLOW_EMBED_*` -> `PAPERFLOW_OPENAI_*` -> `OPENAI_*` |
+
+`PAPERFLOW_OPENAI_API_KEY` and `PAPERFLOW_OPENAI_BASE_URL` are optional
+shared PaperFlow fallbacks for installations that intentionally use one
+OpenAI-compatible gateway for both paths. `OPENAI_API_KEY` and
+`OPENAI_BASE_URL` remain legacy shared fallbacks for backward compatibility.
+They are not required for a split setup.
+
+| Variable | Purpose |
+|----------|---------|
+| `PAPERFLOW_LLM_API_KEY` / `PAPERFLOW_LLM_BASE_URL` | LLM-only OpenAI-compatible credentials and endpoint |
+| `PAPERFLOW_EMBED_API_KEY` / `PAPERFLOW_EMBED_BASE_URL` | Embedding-only OpenAI-compatible credentials and endpoint |
+| `PAPERFLOW_OPENAI_API_KEY` / `PAPERFLOW_OPENAI_BASE_URL` | Optional shared PaperFlow fallback |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | Legacy shared fallback |
+| `OPENAI_API_TIMEOUT` | Request timeout in seconds for OpenAI-compatible paths (default 60) |
+
+These PaperFlow credentials are consumed only by the PaperFlow LLM and
+embedding providers. They are not forwarded to the PaperDaily Codex CLI
+provider. A Codex `--isolated-home` deep-read job still deliberately requires
+its own `OPENAI_API_KEY`; ordinary shared-home Codex use continues to use the
+existing Codex login.
 
 ## Anthropic API
 
