@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from paperdaily.channels import FeishuChannel, MarkdownChannel, TerminalChannel
-from paperdaily.models import Digest, Recommendation
+from paperdaily.models import ChineseSummary, Digest, Recommendation
 
 
 def _digest() -> Digest:
@@ -50,6 +50,22 @@ def test_markdown_and_terminal_channels_publish_locally(tmp_path: Path) -> None:
     assert "https://hjfy.top/" in content
     assert terminal_result.success is True
     assert captured == [content]
+
+
+def test_digest_keeps_the_original_arxiv_title_when_a_chinese_summary_exists() -> None:
+    digest = _digest()
+    digest.recommendations[0].summary = ChineseSummary(
+        title_zh="Translated title",
+        one_sentence_summary="Chinese summary remains available.",
+    )
+
+    from paperdaily.channels import render_digest_markdown
+
+    rendered = render_digest_markdown(digest)
+
+    assert "## 1. A VLA paper" in rendered
+    assert "Translated title" not in rendered
+    assert "Chinese summary remains available." in rendered
 
 
 def test_feishu_without_target_is_a_non_throwing_optional_failure(

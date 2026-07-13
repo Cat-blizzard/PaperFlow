@@ -109,6 +109,9 @@ def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_control
     assert "function startPaperDailyDigest" in script
     assert "function startPaperDailyCodexRead" in script
     assert "function pollPaperDailyTask" in script
+    assert "function setPaperDailyRunBusy" in script
+    assert 'const title = paper.title || "Untitled paper";' in script
+    assert "已有预估或日报任务正在运行" in script
     assert "/api/paperdaily/run" in script
     assert "/api/paperdaily/read" in script
     assert "/api/llm-setup" in script

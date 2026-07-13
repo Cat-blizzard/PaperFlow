@@ -166,6 +166,32 @@ def test_expanded_exact_phrase_matches_hyphen_or_space_without_context() -> None
     assert "vision-language-action" in spaced.matched_terms
 
 
+@pytest.mark.parametrize(
+    ("acronym", "expanded_title"),
+    [
+        ("VLA", "Vision-Language-Action Models for Robot Control"),
+        ("WAM", "World Action Model for Robotic Manipulation"),
+    ],
+)
+def test_keyword_only_acronym_topics_also_match_their_expanded_form(
+    acronym: str,
+    expanded_title: str,
+) -> None:
+    matcher = TopicMatcher([
+        embodied_topic(
+            exact_phrases=[],
+            keywords=[acronym],
+            context_keywords=[],
+            minimum_score=0.4,
+        )
+    ])
+
+    result = matcher.match(expanded_title, "")
+
+    assert result.matched
+    assert result.matched_terms
+
+
 def test_negative_keyword_blocks_topic_even_when_acronym_and_context_match() -> None:
     matcher = TopicMatcher([embodied_topic()])
     result = matcher.match(

@@ -12,6 +12,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 _AMBIGUOUS_ACRONYMS = {"vla", "wam"}
+_ACRONYM_EXPANSIONS = {
+    "vla": ("vision-language-action", "vision language action"),
+    "wam": ("world-action model", "world action model"),
+}
 
 
 class TopicConfigError(ValueError):
@@ -220,6 +224,17 @@ class TopicMatcher:
                 result.append(value)
         return result
 
+    @staticmethod
+    def _exact_phrases(topic: Topic) -> list[str]:
+        """Expand common acronyms so older keyword-only topics still match."""
+
+        expanded = [
+            phrase
+            for keyword in topic.keywords
+            for phrase in _ACRONYM_EXPANSIONS.get(_normalize_text(keyword), ())
+        ]
+        return TopicMatcher._dedupe([*topic.exact_phrases, *expanded])
+
     def _score_topic(self, topic: Topic, title: str, abstract: str, threshold: float) -> TopicScore:
         negative_terms = [
             term
@@ -248,7 +263,7 @@ class TopicMatcher:
             if previous is None or score > previous[1]:
                 contributions[normalized] = (term, score)
 
-        for phrase in topic.exact_phrases:
+        for phrase in self._exact_phrases(topic):
             in_title, in_abstract = self._matched_locations(title, abstract, phrase)
             if not (in_title or in_abstract):
                 continue

@@ -36,6 +36,10 @@ MAX_TASK_ERROR_CHARS = 1_600
 USER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 DEFAULT_TOPIC_CATEGORIES = ["cs.RO", "cs.AI", "cs.CV", "cs.LG", "cs.CL"]
 DEFAULT_ACRONYM_CONTEXT = ["robot", "robotic", "manipulation", "embodied", "action", "policy"]
+ACRONYM_EXACT_PHRASES = {
+    "vla": ["vision-language-action", "vision language action"],
+    "wam": ["world-action model", "world action model"],
+}
 
 
 def _utc_now() -> str:
@@ -189,8 +193,8 @@ class PaperDailyGui:
         return {"user": {"user_id": config.user_id, "label": config.user_id}, **self.list_users()}
 
     @staticmethod
-    def _task_payload(task: dict[str, Any]) -> dict[str, Any]:
-        return {
+    def _task_payload(task: dict[str, Any], *, reused: bool = False) -> dict[str, Any]:
+        payload = {
             "task_id": task["task_id"],
             "kind": task["kind"],
             "status": task["status"],
@@ -199,6 +203,17 @@ class PaperDailyGui:
             "error": task.get("error", ""),
             "result": task.get("result"),
         }
+        if reused:
+            payload["reused"] = True
+        return payload
+
+    def _active_task(self, key: str) -> dict[str, Any] | None:
+        with self._lock:
+            task_id = self._active_keys.get(key)
+            task = self._tasks.get(task_id) if task_id else None
+            if not task or task.get("status") != "running":
+                return None
+            return self._task_payload(task)
 
     def _start_task(self, kind: str, key: str, worker: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         with self._lock:
@@ -206,7 +221,7 @@ class PaperDailyGui:
             if existing_id:
                 existing = self._tasks.get(existing_id)
                 if existing and existing.get("status") == "running":
-                    return self._task_payload(existing)
+                    return self._task_payload(existing, reused=True)
 
             task_id = str(uuid4())
             task = {
@@ -276,6 +291,7 @@ class PaperDailyGui:
                     isolated_home=config.deep_read.isolated_home,
                 ),
             },
+            "active_digest_task": self._active_task(f"paperdaily-digest:{config.user_id}"),
         }
 
     @staticmethod
@@ -353,8 +369,27 @@ class PaperDailyGui:
         negatives = list(raw_topic.get("negative_keywords") or [])
         if "wam" in normalized_keywords and not negatives:
             negatives = ["wireless access management", "web application monitoring"]
-        exact_phrases = list(raw_topic.get("exact_phrases") or [
-            item for item in keywords if " " in item or "-" in item
+        def dedupe(values: list[str]) -> list[str]:
+            seen: set[str] = set()
+            result: list[str] = []
+            for value in values:
+                text = str(value).strip()
+                key = text.casefold()
+                if text and key not in seen:
+                    seen.add(key)
+                    result.append(text)
+            return result
+
+        auto_phrases = [
+            phrase
+            for keyword in normalized_keywords
+            for phrase in ACRONYM_EXACT_PHRASES.get(keyword, [])
+        ]
+        exact_phrases = dedupe([
+            *list(raw_topic.get("exact_phrases") or [
+                item for item in keywords if " " in item or "-" in item
+            ]),
+            *auto_phrases,
         ])
         name = str(raw_topic.get("name") or "").strip() or " / ".join(keywords[:3])
         topic_id = str(raw_topic.get("id") or "").strip() or f"topic-{uuid4().hex[:10]}"
@@ -428,9 +463,9 @@ class PaperDailyGui:
         custom_end: str | None = None,
     ) -> dict[str, Any]:
         normalized_choice = str(choice or "recommended").strip().lower()
+        config, service = self._context(user_id)
 
         def worker() -> dict[str, Any]:
-            _config, service = self._context(user_id)
             plan = service.catchup_plan()
             window = service.select_window(
                 plan,
@@ -450,7 +485,7 @@ class PaperDailyGui:
 
         return self._start_task(
             "preview" if dry_run else "digest",
-            f"paperdaily-digest:{user_id or 'default'}",
+            f"paperdaily-digest:{config.user_id}",
             worker,
         )
 

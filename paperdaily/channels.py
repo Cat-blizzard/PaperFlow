@@ -65,13 +65,13 @@ def render_digest_markdown(digest: Digest) -> str:
     for item in digest.recommendations:
         paper = item.paper
         summary = item.summary
-        title = _safe((summary.title_zh if summary else "") or paper.get("title"))
-        original_title = _safe(paper.get("title"))
+        # arXiv titles are source metadata. Keep them verbatim; only the
+        # explanatory content is localized.
+        title = _safe(paper.get("title"))
         lines.extend(
             [
                 f"## {item.rank}. {title}",
                 "",
-                f"- 原题：{original_title}",
                 f"- arXiv：`{item.canonical_id}`",
                 f"- 综合分：{item.score:.3f}",
                 f"- 命中话题：{', '.join(item.matched_topics) or '未标注'}",

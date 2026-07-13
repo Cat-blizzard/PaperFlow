@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -187,6 +188,47 @@ def test_gui_users_keep_topics_and_output_areas_separate(tmp_path: Path) -> None
     assert topic["topic"]["arxiv_categories"] == ["cs.RO", "cs.AI", "cs.CV", "cs.LG", "cs.CL"]
     assert "robot" in topic["topic"]["context_keywords"]
     assert "wireless access management" in topic["topic"]["negative_keywords"]
+    assert "vision-language-action" in topic["topic"]["exact_phrases"]
+    assert "world action model" in topic["topic"]["exact_phrases"]
     assert [item.id for item in original_config.topics] == ["embodied-vla"]
     assert len(alice_config.topics) == 1
     assert alice_config.output_dir != original_config.output_dir
+
+
+def test_gui_reuses_an_active_preview_instead_of_starting_a_second_digest_task(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "paperdaily.yaml"
+    config = _config(config_path)
+    gui = PaperDailyGui(config_path)
+    started = threading.Event()
+    release = threading.Event()
+
+    class FakeService:
+        def catchup_plan(self):
+            return object()
+
+        def select_window(self, _plan, _choice, **_kwargs):
+            return DateWindow(date(2026, 7, 1), date(2026, 7, 1), "recommended")
+
+        def run(self, window, **_kwargs):
+            started.set()
+            assert release.wait(timeout=2)
+            return RunOutcome(
+                digest=Digest(
+                    run_id="00000000-0000-0000-0000-000000000000",
+                    user_id=config.user_id,
+                    window_start=window.start_date,
+                    window_end=window.end_date,
+                    generated_at=datetime.now(timezone.utc),
+                    recommendations=[],
+                ),
+                dry_run=True,
+            )
+
+    monkeypatch.setattr(gui, "_context", lambda _user_id=None: (config, FakeService()))
+    first = gui.start_digest_task(choice="recommended", dry_run=True, limit=12)
+    assert started.wait(timeout=1)
+    second = gui.start_digest_task(choice="recommended", dry_run=False, limit=12)
+    release.set()
+
+    assert second["task_id"] == first["task_id"]
+    assert second["reused"] is True

@@ -60,7 +60,9 @@
     paperdailyDigest: null,
     paperdailyRuns: [],
     paperdailyTaskId: "",
-    paperdailyPollToken: 0,
+    paperdailyDigestTaskId: "",
+    paperdailyPollTokens: {},
+    paperdailyRunBusy: false,
     paperdailyEditingTopicId: "",
     llmSetup: null,
     settings: null
@@ -2156,9 +2158,21 @@
 
   function updatePaperDailyCustomDates() {
     const custom = $("pdWindowChoice")?.value === "custom";
+    const busy = Boolean(state.paperdailyRunBusy);
     [$("pdCustomStart"), $("pdCustomEnd")].forEach((input) => {
-      if (input) input.disabled = !custom;
+      if (input) input.disabled = busy || !custom;
     });
+  }
+
+  function setPaperDailyRunBusy(busy) {
+    state.paperdailyRunBusy = Boolean(busy);
+    const configured = Boolean(state.paperdailyStatus?.configured);
+    const disabled = !configured || state.paperdailyRunBusy;
+    ["pdPreviewBtn", "pdRunBtn", "pdWindowChoice", "pdLimit"].forEach((id) => {
+      const control = $(id);
+      if (control) control.disabled = disabled;
+    });
+    updatePaperDailyCustomDates();
   }
 
   function renderPaperDailyTopics(topics) {
@@ -2172,6 +2186,10 @@
     }
     target.className = "paperdaily-topics-list";
     target.innerHTML = items.map((topic) => {
+      const keywords = (topic.keywords || []).join("、") || "未设置关键词";
+      const autoPhrases = (topic.exact_phrases || [])
+        .filter((phrase) => !(topic.keywords || []).some((keyword) => keyword.toLowerCase() === String(phrase).toLowerCase()))
+        .slice(0, 4);
       const categories = (topic.arxiv_categories || []).join(" · ") || "未设置分类";
       return `
         <article class="paperdaily-topic-row">
@@ -2179,6 +2197,8 @@
           <button type="button" class="paperdaily-topic-copy" data-pd-topic-edit="${escapeHtml(topic.id)}" title="编辑 ${escapeHtml(topic.name)}">
             <strong>${escapeHtml(topic.name)}</strong>
             <span>${escapeHtml(categories)}</span>
+            <span>关键词：${escapeHtml(keywords)}</span>
+            ${autoPhrases.length ? `<span>匹配短语：${escapeHtml(autoPhrases.join("、"))}</span>` : ""}
           </button>
           <button type="button" class="icon-button" data-pd-topic-edit="${escapeHtml(topic.id)}" title="编辑 ${escapeHtml(topic.name)}" aria-label="编辑 ${escapeHtml(topic.name)}">⋯</button>
         </article>`;
@@ -2209,10 +2229,11 @@
     $("pdEmbedProvider").textContent = `Embedding：${embedding.name || "-"}:${embedding.model || "-"}`;
     $("pdCodexProvider").textContent = codex.ready ? "已就绪" : "未就绪";
     $("pdDigestCount").textContent = latest ? `最近日报 ${latest.recommendation_count || 0} 篇` : "暂无日报";
-    ["pdAddTopicBtn", "pdPreviewBtn", "pdRunBtn", "pdLoadLatestBtn", "pdRetrySummariesBtn", "pdDigestRunSelect"].forEach((id) => {
+    ["pdAddTopicBtn", "pdLoadLatestBtn", "pdRetrySummariesBtn", "pdDigestRunSelect"].forEach((id) => {
       const button = $(id);
       if (button) button.disabled = !configured;
     });
+    setPaperDailyRunBusy(Boolean(data?.active_digest_task));
     renderPaperDailyTopics(data?.topics || []);
   }
 
@@ -2271,7 +2292,7 @@
     target.className = "paperdaily-digest-list";
     target.innerHTML = papers.map((paper, index) => {
       const summary = paper.summary || {};
-      const title = summary.title_zh || paper.title || "Untitled paper";
+      const title = paper.title || "Untitled paper";
       const meta = [paper.arxiv_id, paperdailyAuthors(paper.authors), (paper.categories || []).join(" · ")]
         .filter(Boolean)
         .join(" · ");
@@ -2318,6 +2339,13 @@
   async function loadPaperDaily(options = {}) {
     const data = await api(`/api/paperdaily/status?${paperdailyQuery()}`);
     renderPaperDailyStatus(data);
+    const activeTaskId = data?.active_digest_task?.task_id || "";
+    if (activeTaskId && state.paperdailyDigestTaskId !== activeTaskId) {
+      setPaperDailyTaskStatus("预估或日报任务仍在运行，正在恢复进度监控。", "running");
+      pollPaperDailyTask(activeTaskId, { lockDigestControls: true }).catch((error) => {
+        setPaperDailyTaskStatus(error.message || String(error), "error");
+      });
+    }
     if (data.configured && options.loadDigest !== false) {
       const runs = await loadPaperDailyRuns();
       await loadPaperDailyDigest(runs[0]?.run_id || "");
@@ -2332,21 +2360,33 @@
     if (choice === "custom" && !customStart) {
       throw new Error("自定义范围需要选择开始日期。 ");
     }
-    const data = await api("/api/paperdaily/run", {
-      method: "POST",
-      body: JSON.stringify({
-        user_id: currentUser(),
-        choice,
-        dry_run: dryRun,
-        limit: Number($("pdLimit").value || 12),
-        custom_start: customStart,
-        custom_end: customEnd
-      })
-    });
-    setPaperDailyTaskStatus(dryRun ? "正在抓取并估算候选论文…" : "正在检索、排序并生成日报…", "running");
-    pollPaperDailyTask(data.task.task_id).catch((error) => {
-      setPaperDailyTaskStatus(error.message || String(error), "error");
-    });
+    setPaperDailyRunBusy(true);
+    try {
+      const data = await api("/api/paperdaily/run", {
+        method: "POST",
+        body: JSON.stringify({
+          user_id: currentUser(),
+          choice,
+          dry_run: dryRun,
+          limit: Number($("pdLimit").value || 12),
+          custom_start: customStart,
+          custom_end: customEnd
+        })
+      });
+      const reused = Boolean(data.task?.reused);
+      setPaperDailyTaskStatus(
+        reused
+          ? "已有预估或日报任务正在运行；本次操作已复用该任务，不会中断或重复抓取。"
+          : (dryRun ? "正在抓取并估算候选论文…" : "正在检索、排序并生成日报…"),
+        "running"
+      );
+      pollPaperDailyTask(data.task.task_id, { lockDigestControls: true }).catch((error) => {
+        setPaperDailyTaskStatus(error.message || String(error), "error");
+      });
+    } catch (error) {
+      setPaperDailyRunBusy(false);
+      throw error;
+    }
   }
 
   async function startPaperDailyCodexRead(arxivId) {
@@ -2373,34 +2413,55 @@
     });
   }
 
-  async function pollPaperDailyTask(taskId) {
-    const token = ++state.paperdailyPollToken;
+  async function pollPaperDailyTask(taskId, options = {}) {
+    const taskKey = String(taskId || "");
+    const token = (state.paperdailyPollTokens[taskKey] || 0) + 1;
+    state.paperdailyPollTokens[taskKey] = token;
     state.paperdailyTaskId = taskId;
-    while (token === state.paperdailyPollToken) {
-      const data = await api(`/api/paperdaily/task?${paperdailyQuery({ task_id: taskId })}`);
-      const task = data.task || {};
-      if (task.status === "running") {
-        await new Promise((resolve) => window.setTimeout(resolve, 1200));
-        continue;
+    if (options.lockDigestControls) state.paperdailyDigestTaskId = taskId;
+    try {
+      while (token === state.paperdailyPollTokens[taskKey]) {
+        const data = await api(`/api/paperdaily/task?${paperdailyQuery({ task_id: taskId })}`);
+        const task = data.task || {};
+        if (task.status === "running") {
+          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+          continue;
+        }
+        state.paperdailyTaskId = "";
+        if (task.status !== "completed") {
+          throw new Error(task.error || "PaperDaily 任务失败。");
+        }
+        if (task.kind === "preview") {
+          renderPaperDailyDigest(task.result, { preview: true });
+          const stats = task.result?.stats || {};
+          const handled = Number(stats.handled_count || 0);
+          const matched = Number(stats.matched_count || 0);
+          const noNewPapers = !task.result?.recommendations?.length && handled > 0 && matched > 0;
+          setPaperDailyTaskStatus(
+            noNewPapers
+              ? `预估完成：匹配到 ${matched} 篇，其中 ${handled} 篇已在旧日报中推送；防重机制不会再次生成。`
+              : `预估完成：${task.result?.recommendations?.length || 0} 篇候选，不会写入 watermark。`
+          );
+        } else if (task.kind === "digest") {
+          await loadPaperDaily({ loadDigest: true });
+          setPaperDailyTaskStatus(`日报已生成：${task.result?.recommendations?.length || 0} 篇推荐。`);
+        } else if (task.kind === "codex_read") {
+          await loadPaperDailyNote(task.result?.arxiv_id || "");
+          setPaperDailyTaskStatus(`Codex 精读完成：${task.result?.arxiv_id || "论文"}。`);
+        } else if (task.kind === "summary_retry") {
+          await loadPaperDaily({ loadDigest: true });
+          setPaperDailyTaskStatus(`中文摘要重试完成：${task.result?.completed || 0}/${task.result?.total || 0} 篇成功。`);
+        }
+        return task;
       }
-      state.paperdailyTaskId = "";
-      if (task.status !== "completed") {
-        throw new Error(task.error || "PaperDaily 任务失败。");
+    } finally {
+      if (token !== state.paperdailyPollTokens[taskKey]) return;
+      delete state.paperdailyPollTokens[taskKey];
+      if (state.paperdailyTaskId === taskId) state.paperdailyTaskId = "";
+      if (options.lockDigestControls) {
+        state.paperdailyDigestTaskId = "";
+        setPaperDailyRunBusy(false);
       }
-      if (task.kind === "preview") {
-        renderPaperDailyDigest(task.result, { preview: true });
-        setPaperDailyTaskStatus(`预估完成：${task.result?.recommendations?.length || 0} 篇候选，不会写入 watermark。`);
-      } else if (task.kind === "digest") {
-        await loadPaperDaily({ loadDigest: true });
-        setPaperDailyTaskStatus(`日报已生成：${task.result?.recommendations?.length || 0} 篇推荐。`);
-      } else if (task.kind === "codex_read") {
-        await loadPaperDailyNote(task.result?.arxiv_id || "");
-        setPaperDailyTaskStatus(`Codex 精读完成：${task.result?.arxiv_id || "论文"}。`);
-      } else if (task.kind === "summary_retry") {
-        await loadPaperDaily({ loadDigest: true });
-        setPaperDailyTaskStatus(`中文摘要重试完成：${task.result?.completed || 0}/${task.result?.total || 0} 篇成功。`);
-      }
-      return task;
     }
   }
 
@@ -2479,6 +2540,7 @@
     });
     closePaperDailyTopic();
     await loadPaperDaily({ loadDigest: false });
+    setPaperDailyTaskStatus("话题已保存，将用于下一次预估或日报。已在历史日报中推送的论文会继续防重，不会重复发送。");
     showFeedbackToast("success", "话题已保存", data.topic?.name || "研究话题已更新。");
   }
 
