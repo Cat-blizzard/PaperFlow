@@ -434,7 +434,7 @@ class PaperDailyGui:
             keywords=keywords,
             context_keywords=acronym_context,
             negative_keywords=negatives,
-            daily_limit=int(raw_topic.get("daily_limit") or 12),
+            daily_limit=int(raw_topic.get("daily_limit") or 0),
             minimum_score=float(raw_topic.get("minimum_score") or 0.25),
         )
 
@@ -507,7 +507,10 @@ class PaperDailyGui:
             )
             if window.is_empty:
                 raise ValueError("当前没有待处理论文；请选择明确的历史日期窗口。")
-            normalized_limit = max(1, int(limit)) if limit is not None else None
+            normalized_limit = int(limit) if limit is not None else None
+            if normalized_limit is not None and normalized_limit < 0:
+                raise ValueError("最多推荐必须是 0 或正整数")
+            normalized_limit = normalized_limit or None
             if not dry_run and not include_handled:
                 preview = service.run(
                     window,

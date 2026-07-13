@@ -78,7 +78,7 @@ class PaperRanker:
         topics: Iterable[Topic],
         *,
         user_id: str,
-        limit: int = 12,
+        limit: int | None = None,
         store: PaperDailyStore | None = None,
         embedding_provider: Any = None,
         mmr_lambda: float = 0.75,
@@ -87,12 +87,21 @@ class PaperRanker:
         self.topics = [topic for topic in topics if topic.enabled]
         self.matcher = TopicMatcher(self.topics)
         self.user_id = user_id
-        self.limit = max(1, int(limit))
+        self.limit = self._normalize_limit(limit)
         self.store = store
         self.embedding_provider = embedding_provider or build_embedding_provider()
         self.mmr_lambda = max(0.0, min(1.0, float(mmr_lambda)))
         self.include_handled = include_handled
         self.last_diagnostics: dict[str, Any] = {}
+
+    @staticmethod
+    def _normalize_limit(value: int | None) -> int | None:
+        if value is None:
+            return None
+        normalized = int(value)
+        if normalized < 0:
+            raise ValueError("limit must be zero or positive")
+        return normalized or None
 
     @property
     def semantic_enabled(self) -> bool:
@@ -253,9 +262,9 @@ class PaperRanker:
         topic_counts: dict[str, int] = defaultdict(int)
         quota_by_topic = {topic.id: topic.daily_limit for topic in self.topics}
         remaining = list(scored)
-        selected_limit = self.limit if limit is None else max(1, int(limit))
+        selected_limit = self.limit if limit is None else self._normalize_limit(limit)
         semantic_enabled = bool(self.last_diagnostics.get("semantic_enabled", self.semantic_enabled))
-        while remaining and len(selected) < selected_limit:
+        while remaining and (selected_limit is None or len(selected) < selected_limit):
             best_index: int | None = None
             best_value = float("-inf")
             for index, candidate in enumerate(remaining):
@@ -268,7 +277,8 @@ class PaperRanker:
                 available_topics = [
                     topic_id
                     for topic_id in ordered_topics
-                    if topic_counts[topic_id] < quota_by_topic.get(topic_id, selected_limit)
+                    if quota_by_topic.get(topic_id, 0) <= 0
+                    or topic_counts[topic_id] < quota_by_topic[topic_id]
                 ]
                 if ordered_topics and not available_topics:
                     continue

@@ -175,6 +175,24 @@ def test_dry_run_does_not_write_run_watermark_summary_delivery_or_output(tmp_pat
     assert outcome.digest.stats["llm_rerank_status"] == "skipped_dry_run"
 
 
+def test_one_day_digest_keeps_all_matches_when_default_limit_is_zero(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    config.daily.default_limit = 0
+    config.topics[0].daily_limit = 0
+    service = PaperDailyService(
+        config,
+        store=PaperDailyStore(config.database),
+        collector=_Collector(_papers_for_rerank()),
+        embedding_provider=_HashEmbedding(),
+    )
+    window = DateWindow(date(2026, 7, 10), date(2026, 7, 10), "yesterday")
+
+    outcome = service.run(window, dry_run=True, generate_summary=False)
+
+    assert len(outcome.digest.recommendations) == 4
+    assert outcome.digest.stats["matched_count"] == 4
+
+
 def test_initialize_runtime_uses_only_paperdaily_storage(tmp_path: Path) -> None:
     config = _config(tmp_path)
     service = PaperDailyService(

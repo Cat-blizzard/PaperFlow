@@ -106,3 +106,24 @@ def test_rank_applies_topic_quota_and_returns_explainable_components() -> None:
         "feedback",
     }
     assert ranker.last_diagnostics["semantic_enabled"] is False
+
+
+def test_zero_limits_keep_every_matching_paper() -> None:
+    ranker = PaperRanker(
+        [_topic(daily_limit=0)],
+        user_id="alice",
+        limit=0,
+        embedding_provider=_HashEmbedding(),
+    )
+
+    recommendations = ranker.rank(
+        [
+            _paper("2607.00001", "Vision Language Action for a robot"),
+            _paper("2607.00002", "A VLA robot policy"),
+            _paper("2607.00003", "Vision Language Action for robot learning"),
+        ],
+        window_end=date(2026, 7, 11),
+    )
+
+    assert len(recommendations) == 3
+    assert [item.rank for item in recommendations] == [1, 2, 3]

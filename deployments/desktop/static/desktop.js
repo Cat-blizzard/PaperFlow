@@ -1819,7 +1819,7 @@
         timezone: "Asia/Shanghai",
         enabled_topic_count: 1,
         categories: ["cs.RO", "cs.AI", "cs.CV", "cs.LG"],
-        topics: [{ id: "embodied-vla", name: "具身智能与 VLA", description: "关注视觉语言动作模型、机器人操作与跨本体泛化。", enabled: true, arxiv_categories: ["cs.RO", "cs.AI"], exact_phrases: ["vision-language-action"], keywords: ["VLA", "OpenVLA"], context_keywords: ["robot", "manipulation"], negative_keywords: [], daily_limit: 12, minimum_score: 0.25 }],
+        topics: [{ id: "embodied-vla", name: "具身智能与 VLA", description: "关注视觉语言动作模型、机器人操作与跨本体泛化。", enabled: true, arxiv_categories: ["cs.RO", "cs.AI"], exact_phrases: ["vision-language-action"], keywords: ["VLA", "OpenVLA"], context_keywords: ["robot", "manipulation"], negative_keywords: [], daily_limit: 0, minimum_score: 0.25 }],
         catchup: { has_work: true, last_completed_date: "2026-07-04", missing_start: "2026-07-05", gap_days: 7, recommended_choice: "7d", recommended_window: { start_date: "2026-07-05", end_date: "2026-07-11", days: 7 } },
         state: { last_completed_window_end: "2026-07-04" },
         latest_run: { run_id: "paperdaily_demo_20260712", status: "completed", window_start: "2026-07-05", window_end: "2026-07-11", recommendation_count: 1, summary_count: 1 },
@@ -2397,7 +2397,7 @@
           user_id: currentUser(),
           choice,
           dry_run: dryRun,
-          limit: Number($("pdLimit").value || 12),
+          limit: Number($("pdLimit").value || 0) || null,
           custom_start: customStart,
           custom_end: customEnd,
           include_handled: $("pdIncludeHandled")?.checked === true
@@ -2548,7 +2548,7 @@
     $("pdTopicKeywords").value = (topic?.keywords || []).join(", ");
     $("pdTopicContext").value = (topic?.context_keywords || []).join(", ");
     $("pdTopicNegative").value = (topic?.negative_keywords || []).join(", ");
-    $("pdTopicDailyLimit").value = topic?.daily_limit || 12;
+    $("pdTopicDailyLimit").value = topic?.daily_limit ?? 0;
     $("pdTopicMinimumScore").value = topic?.minimum_score ?? 0.25;
     $("pdTopicEnabled").checked = topic?.enabled ?? true;
     $("pdTopicDeleteBtn").hidden = !editing;
@@ -2574,7 +2574,7 @@
       keywords: paperdailyList($("pdTopicKeywords").value),
       context_keywords: paperdailyList($("pdTopicContext").value),
       negative_keywords: paperdailyList($("pdTopicNegative").value),
-      daily_limit: Number($("pdTopicDailyLimit").value || 12),
+      daily_limit: Number($("pdTopicDailyLimit").value || 0),
       minimum_score: Number($("pdTopicMinimumScore").value || 0.25)
     };
   }

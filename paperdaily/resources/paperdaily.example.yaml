@@ -5,7 +5,8 @@ runtime:
   database: ../../data/paperflow.db
   output_dir: ../../data/output
 daily:
-  default_limit: 12
+  # 0 means no cap for a one-day digest.
+  default_limit: 0
   rerank_limit: 30
   llm_rerank_enabled: true
   llm_rerank_weight: 0.25
@@ -80,5 +81,6 @@ topics:
       - robot learning
     context_keywords: [robot, robotic, manipulation, embodied, action, policy, embodiment]
     negative_keywords: [wireless access management, web application monitoring]
-    daily_limit: 12
+    # 0 means no per-topic quota.
+    daily_limit: 0
     minimum_score: 0.25

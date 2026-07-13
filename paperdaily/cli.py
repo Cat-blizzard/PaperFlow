@@ -531,7 +531,7 @@ def topic_add(
     keyword: list[str] | None = typer.Option(None, "--keyword"),
     context_keyword: list[str] | None = typer.Option(None, "--context-keyword"),
     negative_keyword: list[str] | None = typer.Option(None, "--negative-keyword"),
-    daily_limit: int = typer.Option(12, "--daily-limit"),
+    daily_limit: int = typer.Option(0, "--daily-limit", help="0 表示不限"),
     config: Path | None = typer.Option(None, "--config", "-c"),
 ) -> None:
     path, cfg = _load(config)
@@ -583,7 +583,7 @@ def topic_edit(
     clear_keywords: bool = typer.Option(False, "--clear-keywords"),
     clear_context_keywords: bool = typer.Option(False, "--clear-context-keywords"),
     clear_negative_keywords: bool = typer.Option(False, "--clear-negative-keywords"),
-    daily_limit: int | None = typer.Option(None, "--daily-limit"),
+    daily_limit: int | None = typer.Option(None, "--daily-limit", help="0 表示不限"),
     minimum_score: float | None = typer.Option(None, "--minimum-score"),
     config: Path | None = typer.Option(None, "--config", "-c"),
 ) -> None:

@@ -125,7 +125,7 @@ class PaperDailyService:
         self,
         fetch_result: ArxivFetchResult,
         *,
-        limit: int,
+        limit: int | None,
         include_handled: bool,
         use_llm_rerank: bool,
     ) -> tuple[list[Recommendation], dict[str, Any]]:
@@ -286,7 +286,12 @@ class PaperDailyService:
             if window.days == 1
             else self.config.catchup.max_papers_per_run
         )
-        requested_limit = max(1, int(limit or default_limit))
+        raw_limit = default_limit if limit is None else limit
+        requested_limit = int(raw_limit)
+        if requested_limit < 0:
+            raise ValueError("limit must be zero or positive")
+        # ``0`` is the explicit no-cap value for daily digests and topic quotas.
+        requested_limit = requested_limit or None
         run_id: str | None = None
         mode = "daily" if window.days == 1 else "catchup"
         if not dry_run:

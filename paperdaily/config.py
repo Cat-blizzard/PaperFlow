@@ -47,7 +47,9 @@ def _resolve_path(value: Any, *, base_dir: Path | None, default: str) -> Path:
 class DailyConfig:
     """Settings for normal daily recommendation runs."""
 
-    default_limit: int = 12
+    # ``0`` means no cap for a one-day digest.  Catch-up windows retain their
+    # separate ``catchup.max_papers_per_run`` default.
+    default_limit: int = 0
     rerank_limit: int = 30
     llm_rerank_enabled: bool = True
     llm_rerank_weight: float = 0.25
@@ -90,9 +92,9 @@ class DailyConfig:
         self.arxiv_rss_cache_ttl_minutes = int(self.arxiv_rss_cache_ttl_minutes)
         self.arxiv_api_id_batch_size = int(self.arxiv_api_id_batch_size)
         self.mmr_lambda = float(self.mmr_lambda)
-        if self.default_limit <= 0:
-            raise ConfigError("daily.default_limit must be positive")
-        if self.rerank_limit < self.default_limit:
+        if self.default_limit < 0:
+            raise ConfigError("daily.default_limit must be zero or positive")
+        if self.default_limit > 0 and self.rerank_limit < self.default_limit:
             raise ConfigError("daily.rerank_limit must be greater than or equal to default_limit")
         if not 0.0 <= self.llm_rerank_weight <= 1.0:
             raise ConfigError("daily.llm_rerank_weight must be between 0 and 1")
@@ -124,7 +126,7 @@ class DailyConfig:
     def from_dict(cls, data: Mapping[str, Any] | None) -> DailyConfig:
         raw = _as_mapping(data, "daily")
         return cls(
-            default_limit=raw.get("default_limit", raw.get("limit", 12)),
+            default_limit=raw.get("default_limit", raw.get("limit", 0)),
             rerank_limit=raw.get("rerank_limit", 30),
             llm_rerank_enabled=raw.get(
                 "llm_rerank_enabled",

@@ -100,6 +100,8 @@ def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_control
     assert 'id="pdDigestList"' in html
     assert 'id="pdDigestRunSelect"' in html
     assert 'id="pdIncludeHandled"' in html
+    assert 'id="pdLimit" type="number" min="0"' in html
+    assert 'id="pdTopicDailyLimit" type="number" min="0"' in html
     assert 'class="paperdaily-sidebar"' in html
     assert 'id="pdTopicDialog"' in html
     assert 'id="llmSetupDialog"' in html
@@ -119,6 +121,7 @@ def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_control
     assert "paperdaily-paper-tags" in script
     assert "reused_existing_digest" in script
     assert "include_handled:" in script
+    assert 'limit: Number($("pdLimit").value || 0) || null' in script
     assert "已有预估或日报任务正在运行" in script
     assert "/api/paperdaily/run" in script
     assert "/api/paperdaily/read" in script

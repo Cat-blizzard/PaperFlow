@@ -102,6 +102,14 @@ def test_config_round_trip_preserves_core_values(tmp_path: Path) -> None:
     assert loaded.topics[0].to_dict() == config.topics[0].to_dict()
 
 
+def test_zero_daily_limits_mean_no_cap() -> None:
+    config = PaperDailyConfig.from_dict({"daily": {"default_limit": 0}})
+    topic = embodied_topic(daily_limit=0)
+
+    assert config.daily.default_limit == 0
+    assert topic.daily_limit == 0
+
+
 def test_config_rejects_empty_timezone_and_duplicate_topics() -> None:
     with pytest.raises(ConfigError, match="timezone is required"):
         PaperDailyConfig(timezone="")

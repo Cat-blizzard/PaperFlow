@@ -72,7 +72,8 @@ class Topic:
     keywords: list[str] = field(default_factory=list)
     context_keywords: list[str] = field(default_factory=list)
     negative_keywords: list[str] = field(default_factory=list)
-    daily_limit: int = 12
+    # ``0`` means that this topic has no per-digest quota.
+    daily_limit: int = 0
     minimum_score: float = 0.25
 
     def __post_init__(self) -> None:
@@ -92,8 +93,8 @@ class Topic:
 
         self.daily_limit = int(self.daily_limit)
         self.minimum_score = float(self.minimum_score)
-        if self.daily_limit <= 0:
-            raise TopicConfigError(f"topic {self.id!r} daily_limit must be positive")
+        if self.daily_limit < 0:
+            raise TopicConfigError(f"topic {self.id!r} daily_limit must be zero or positive")
         if not 0.0 <= self.minimum_score <= 1.0:
             raise TopicConfigError(f"topic {self.id!r} minimum_score must be between 0 and 1")
 
@@ -111,7 +112,7 @@ class Topic:
             keywords=data.get("keywords", []),
             context_keywords=data.get("context_keywords", data.get("context", [])),
             negative_keywords=data.get("negative_keywords", []),
-            daily_limit=data.get("daily_limit", 12),
+            daily_limit=data.get("daily_limit", 0),
             minimum_score=data.get("minimum_score", 0.25),
         )
 
