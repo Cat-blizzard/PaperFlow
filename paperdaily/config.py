@@ -413,8 +413,6 @@ class PaperDailyConfig:
             "database": display(self.database),
             "daily": self.daily.to_dict(),
             "catchup": self.catchup.to_dict(),
-            "providers": self.providers.to_dict(),
-            "deep_read": self.deep_read.to_dict(),
             "topics": [topic.to_dict() for topic in self.topics],
         }
 

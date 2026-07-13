@@ -289,13 +289,6 @@ def _api_paperdaily_task(query_params: Dict[str, Any], _body: Dict[str, Any]) ->
     return {"task": task}
 
 
-def _api_paperdaily_note(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
-    return paperdaily_gui.read_note(
-        str(query_params.get("arxiv_id") or "").strip(),
-        user_id=_paperdaily_user(query_params),
-    )
-
-
 def _api_create_profile(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
     return agents.create_or_update_profile(
         user_id=str(body.get("user_id") or "").strip(),
@@ -533,16 +526,6 @@ def _api_paperdaily_feedback(_query_params: Dict[str, Any], body: Dict[str, Any]
     )
 
 
-def _api_paperdaily_read(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "task": paperdaily_gui.start_codex_read(
-            str(body.get("arxiv_id") or "").strip(),
-            user_id=_paperdaily_user({}, body),
-            force_parse=bool(body.get("force_parse")),
-        )
-    }
-
-
 def _api_paperdaily_retry_summaries(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "task": paperdaily_gui.start_summary_retry(
@@ -578,7 +561,6 @@ GET_ROUTES: Dict[str, ApiHandler] = {
     "/api/paperdaily/digest": _api_paperdaily_digest,
     "/api/paperdaily/digests": _api_paperdaily_digests,
     "/api/paperdaily/task": _api_paperdaily_task,
-    "/api/paperdaily/note": _api_paperdaily_note,
 }
 
 POST_ROUTES: Dict[str, ApiHandler] = {
@@ -609,7 +591,6 @@ POST_ROUTES: Dict[str, ApiHandler] = {
     "/api/paperdaily/users": _api_paperdaily_create_user,
     "/api/paperdaily/run": _api_paperdaily_run,
     "/api/paperdaily/feedback": _api_paperdaily_feedback,
-    "/api/paperdaily/read": _api_paperdaily_read,
     "/api/paperdaily/retry-summaries": _api_paperdaily_retry_summaries,
 }
 

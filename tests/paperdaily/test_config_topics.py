@@ -100,6 +100,9 @@ def test_config_round_trip_preserves_core_values(tmp_path: Path) -> None:
     assert loaded.output_dir == config.output_dir
     assert loaded.database == config.database
     assert loaded.topics[0].to_dict() == config.topics[0].to_dict()
+    serialized = config.to_dict()
+    assert "providers" not in serialized
+    assert "deep_read" not in serialized
 
 
 def test_zero_daily_limits_mean_no_cap() -> None:

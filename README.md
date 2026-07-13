@@ -1,8 +1,8 @@
 # PaperDaily
 
-一个面向个人研究者的本地优先 arXiv Daily 工具：订阅研究话题，筛选每天新论文，保留英文原标题，生成中文短摘要，并在需要时用 Codex CLI 产出带证据位置的中文精读笔记。
+一个面向个人研究者的本地优先 arXiv Daily 工具：订阅研究话题，筛选每天新论文，保留英文原标题，生成中文短摘要，并提供安全的外部中文阅读跳转。
 
-这是 [Cat-blizzard/PaperFlow](https://github.com/Cat-blizzard/PaperFlow) 的 PaperDaily 分支。项目基于 [OpenRaiser/PaperFlow](https://github.com/OpenRaiser/PaperFlow) 开发，保留原项目的 MIT License 与上游署名；本 fork 的产品重心是 **arXiv 日报与论文精读**，而不是会议/期刊聚合、知识 Wiki 或用户画像系统。
+这是 [Cat-blizzard/PaperFlow](https://github.com/Cat-blizzard/PaperFlow) 的 PaperDaily 分支。项目基于 [OpenRaiser/PaperFlow](https://github.com/OpenRaiser/PaperFlow) 开发，保留原项目的 MIT License 与上游署名；本 fork 的产品重心是 **arXiv 日报**，而不是会议/期刊聚合、知识 Wiki、用户画像或本地精读系统。
 
 ## 能做什么
 
@@ -13,9 +13,8 @@
 - 当天日报默认不限数量：所有通过话题规则、且未推送过的论文都会保留；历史补推仍默认限制数量，避免遗漏多天时产生过长列表。
 - 控制重复：已推送论文默认去重；重复生成同一日期时会打开已有日报，而不是制造一个新的空日报。需要回看时可显式勾选“包含已推送论文”。
 - 记录反馈：感兴趣、不相关、稍后阅读、收藏和已读会影响后续排序。
-- Codex 精读：只在你点击后下载 PDF，生成 Markdown 中文阅读笔记，并为实验结论保留章节、页码或表格等证据位置。
 - 外部中文阅读：每张 GUI 卡片可安全跳转至 `hjfy.top` 的对应 arXiv 页面；点击时仅复制 arXiv ID 到剪贴板，不会自动提交论文内容或本地数据。
-- 本地存储：配置、日报、反馈和笔记均保存在本机 YAML、SQLite 与 Markdown 中；飞书只是可选的后续输出渠道。
+- 本地存储：配置、日报与反馈保存在本机 YAML、SQLite 与 Markdown 中；飞书只是可选的后续输出渠道。
 
 ## 工作流
 
@@ -29,8 +28,6 @@ arXiv RSS / API
 中文短摘要 / Markdown 日报 / 本地 GUI
         |
 感兴趣、不相关、稍后阅读
-        |
-Codex CLI 精读 -> 带证据的中文阅读笔记
 ```
 
 ## 快速开始（Windows PowerShell）
@@ -53,7 +50,7 @@ Copy-Item .env.example .env
 .\.venv\Scripts\paperdaily.exe doctor
 ```
 
-`doctor` 应显示当前使用的摘要、Embedding 与 Codex Provider。首次安装时即使没有 API Key 也可运行，但会使用 `mock` 摘要和 `hash` embedding，只适合验证流程，不能提供真正的中文摘要或语义排序。
+`doctor` 应显示当前使用的摘要与 Embedding Provider。首次安装时即使没有 API Key 也可运行，但会使用 `mock` 摘要和 `hash` embedding，只适合验证流程，不能提供真正的中文摘要或语义排序。
 
 ## 配置模型
 
@@ -90,8 +87,6 @@ PAPERFLOW_EMBED_BASE_URL=https://your-embedding-endpoint/v1
 .\.venv\Scripts\paperdaily.exe doctor
 ```
 
-Codex 精读默认使用你本机已登录的 Codex CLI 额度，不读取或替代 `.env` 中的 DeepSeek Key。
-
 ## GUI 使用
 
 ```powershell
@@ -105,7 +100,7 @@ Set-Location D:\PaperFlow
 2. 在“检索与补推”选择日期范围。首次可先点“预估候选”，它不会写入日报或推进进度。
 3. 确认候选后点“生成日报”。同一个日期重复运行会复用已有日报，避免重复推送与空日报。
 4. 在日报卡片上打开论文/PDF，或标记“感兴趣”“稍后”“不相关”。
-5. 对值得深入看的论文点“Codex 精读”。完成后，笔记保存在 `data/output/notes/<arxiv-id>.md`。
+5. 使用“中文阅读”跳转至外部中文阅读页面，或记录反馈以调整后续推荐。
 
 日报卡片会保留论文的英文原标题，中文仅用于摘要和推荐理由。
 
@@ -135,8 +130,6 @@ paperdaily topic show embodied-vla
 paperdaily feedback 2607.08974 interested
 paperdaily feedback 2607.08974 irrelevant
 
-# 用本机 Codex CLI 精读指定论文
-paperdaily read 2607.08974 --provider codex
 ```
 
 常用文件位置：
@@ -147,8 +140,6 @@ paperdaily read 2607.08974 --provider codex
 | 研究者空间配置 | `data/paperdaily/users/<user-id>.yaml` |
 | 本地数据库 | `data/paperflow.db` |
 | Markdown 日报 | `data/output/digests/` |
-| 中文精读笔记 | `data/output/notes/` |
-| PDF 与解析工作区 | `data/workspaces/<arxiv-id>/` |
 
 ## 推荐逻辑
 
@@ -165,8 +156,8 @@ arXiv 不提供统一、可靠的作者关键词字段。因此日报以论文�
 ## 隐私与边界
 
 - 不要将 `.env`、API Key、Cookie 或本地数据库提交到 Git。
-- 中文短摘要与 LLM 重排只读取标题和摘要；全文 PDF 只会在你主动精读时处理。
-- 论文内容和 LaTeX 源码都视为不可信输入。Codex 精读使用受限工作区，模型输出经过结构校验后再写入笔记。
+- 中文短摘要与 LLM 重排只读取标题和摘要；系统不会自动下载或解析全文 PDF。
+- 论文标题、摘要与外部链接都视为不可信输入；系统不会自动执行论文附带代码或将本地数据提交到外部阅读站点。
 - 本项目不是多用户在线服务。GUI 中的“研究者空间”仅用于本机隔离不同人的话题和阅读记录；部署到公网前必须自行增加身份认证。
 
 ## 开发与测试

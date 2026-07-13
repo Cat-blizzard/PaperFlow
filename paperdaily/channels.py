@@ -116,7 +116,6 @@ def render_digest_markdown(digest: Digest) -> str:
             "```bash",
             "paperdaily feedback <arxiv-id> interested",
             "paperdaily feedback <arxiv-id> irrelevant",
-            "paperdaily read <arxiv-id> --provider auto",
             "```",
             "",
         ]

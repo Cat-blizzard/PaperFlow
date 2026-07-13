@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import sys
-from contextlib import suppress
 from datetime import date
 from pathlib import Path
 
@@ -16,14 +15,6 @@ from paperflow.providers import build_embedding_provider, build_llm_provider
 from . import __version__
 from .catchup import DateWindow, default_target_date
 from .config import PaperDailyConfig, load_config, save_config
-from .deep_read import DeepReadService
-from .identifiers import canonicalize_arxiv_id
-from .providers import (
-    AgentProviderError,
-    build_agent_provider,
-    diagnose_agent_providers,
-    list_agent_providers,
-)
 from .service import PaperDailyService
 from .storage import PaperDailyStore
 from .topics import Topic
@@ -34,18 +25,14 @@ EXAMPLE_CONFIG_PATH = Path(__file__).resolve().parent / "resources" / "paperdail
 
 app = typer.Typer(
     name="paperdaily",
-    help="个性化 arXiv 检索、中文摘要、补推与证据化精读。",
+    help="个性化 arXiv 检索、中文摘要、补推与反馈。",
     no_args_is_help=True,
     add_completion=False,
     invoke_without_command=True,
 )
 topic_app = typer.Typer(help="管理研究话题。", no_args_is_help=True)
-provider_app = typer.Typer(help="诊断 Codex / Claude 精读 Provider。", no_args_is_help=True)
-notes_app = typer.Typer(help="查看本地生成的 Markdown 阅读笔记。", no_args_is_help=True)
 mcp_app = typer.Typer(help="启动仅暴露本地业务工具的 stdio MCP Server。", no_args_is_help=True)
 app.add_typer(topic_app, name="topic")
-app.add_typer(provider_app, name="provider")
-app.add_typer(notes_app, name="notes")
 app.add_typer(mcp_app, name="mcp")
 
 
@@ -58,24 +45,6 @@ def _load(path: Path | None) -> tuple[Path, PaperDailyConfig]:
     if not resolved.exists():
         raise typer.BadParameter(f"配置不存在：{resolved}。请先运行 `paperdaily init`。")
     return resolved, load_config(resolved)
-
-
-def _provider_options(config: PaperDailyConfig) -> tuple[dict[str, str], float | None]:
-    commands: dict[str, str] = {}
-    max_budget: float | None = None
-    for name in ("codex", "claude"):
-        settings = config.providers.settings.get(name, {})
-        if settings.get("command"):
-            commands[name] = str(settings["command"])
-        if name == "claude" and settings.get("max_budget_usd") is not None:
-            max_budget = float(settings["max_budget_usd"])
-    return commands, max_budget
-
-
-def _isolated_home_enabled(config: PaperDailyConfig, override: bool | None = None) -> bool:
-    """Resolve the explicit one-run override without changing persisted config."""
-
-    return config.deep_read.isolated_home if override is None else bool(override)
 
 
 def _service(path: Path | None) -> tuple[Path, PaperDailyConfig, PaperDailyService]:
@@ -114,20 +83,6 @@ def _edited_topic_values(
     if supplied is not None:
         return list(supplied)
     return list(current)
-
-
-def _print_read_error(error: Exception) -> None:
-    """Report a controlled deep-read failure without printing provider stderr."""
-
-    if isinstance(error, AgentProviderError):
-        typer.echo(
-            f"精读失败（{error.provider}/{error.code}）：{error.message}",
-            err=True,
-        )
-        if error.returncode is not None:
-            typer.echo(f"Provider 退出状态：{error.returncode}", err=True)
-        return
-    typer.echo(f"精读失败：{error}", err=True)
 
 
 @app.callback()
@@ -173,13 +128,12 @@ def init(
 def doctor(
     config: Path | None = typer.Option(None, "--config", "-c"),
 ) -> None:
-    """检查配置、数据库、摘要/Embedding 和 Agent Provider。"""
+    """检查配置、数据库、摘要与 Embedding Provider。"""
 
     resolved, cfg = _load(config)
     store = PaperDailyStore(cfg.database)
     embed = build_embedding_provider()
     llm = build_llm_provider()
-    commands, _ = _provider_options(cfg)
     typer.echo(f"PaperDaily {__version__}")
     typer.echo(f"配置：{resolved}")
     typer.echo(f"数据库：{store.db_path}")
@@ -191,21 +145,6 @@ def doctor(
     typer.echo(f"中文摘要：{llm.name}:{llm.model}")
     if llm.name == "mock":
         typer.echo("[警告] 未配置真实 LLM，日报会显示原始摘要回退。")
-    typer.echo(
-        "Agent home isolation："
-        + ("API-key-only temporary home" if cfg.deep_read.isolated_home else "disabled (shared login/home)")
-    )
-    for diagnosis in diagnose_agent_providers(
-        commands=commands,
-        isolated_home=cfg.deep_read.isolated_home,
-    ):
-        typer.echo(json.dumps(diagnosis, ensure_ascii=False))
-    try:
-        import fitz  # noqa: F401
-
-        typer.echo("PDF 解析：PyMuPDF 可用")
-    except ImportError:
-        typer.echo("[警告] 未安装 PDF 解析依赖；精读前请安装 `pip install -e \".[parsing]\"`。")
 
 
 @app.command()
@@ -436,71 +375,6 @@ def history(
         typer.echo(json.dumps(run_record, ensure_ascii=False))
 
 
-@app.command()
-def read(
-    arxiv_id: str = typer.Argument(...),
-    provider: str | None = typer.Option(None, "--provider", help="auto/codex/claude"),
-    config: Path | None = typer.Option(None, "--config", "-c"),
-    timeout: int = typer.Option(1800, "--timeout"),
-    force_parse: bool = typer.Option(False, "--force-parse"),
-    isolated_home: bool | None = typer.Option(
-        None,
-        "--isolated-home/--shared-home",
-        help="Use a temporary empty provider home and direct API-key authentication for this run.",
-    ),
-) -> None:
-    """下载论文全文并调用 Codex/Claude 生成结构化中文笔记。"""
-
-    _, cfg, service = _service(config)
-    agent_run_id: str | None = None
-    try:
-        commands, max_budget = _provider_options(cfg)
-        use_isolated_home = _isolated_home_enabled(cfg, isolated_home)
-        selected_provider = build_agent_provider(
-            provider or cfg.providers.default_provider,
-            preferred_order=cfg.providers.fallback_order,
-            commands=commands,
-            max_budget_usd=max_budget,
-            isolated_home=use_isolated_home,
-        )
-        context = "\n\n".join(f"## {topic.name}\n{topic.description}" for topic in service.enabled_topics)
-        deep_read = DeepReadService(
-            workspace_root=cfg.output_dir.parent / "workspaces",
-            notes_dir=cfg.output_dir / "notes",
-            store=service.store,
-            max_pdf_pages=cfg.deep_read.max_pdf_pages,
-            max_extracted_text_chars=cfg.deep_read.max_extracted_text_chars,
-        )
-        agent_run_id = service.store.start_agent_run(
-            selected_provider.name,
-            "cli-managed",
-            "reading_note",
-            canonical_id=arxiv_id,
-        )
-        result = deep_read.run(
-            arxiv_id,
-            provider=selected_provider,
-            topic_context=context,
-            timeout_seconds=timeout,
-            force_parse=force_parse,
-        )
-        service.store.complete_agent_run(
-            agent_run_id,
-            result.note,
-            metadata={"markdown_path": str(result.markdown_path)},
-        )
-    except Exception as exc:
-        if agent_run_id is not None:
-            # The primary provider error remains more useful than a secondary
-            # best-effort status-write failure.
-            with suppress(Exception):
-                service.store.fail_agent_run(agent_run_id, exc)
-        _print_read_error(exc)
-        raise typer.Exit(code=1) from None
-    service.record_feedback(arxiv_id, "reading_note")
-    typer.echo(f"笔记：{result.markdown_path}")
-
-
 @topic_app.command("list")
 def topic_list(config: Path | None = typer.Option(None, "--config", "-c")) -> None:
     _, cfg = _load(config)
@@ -661,117 +535,6 @@ def topic_disable(
     """禁用一个研究话题，但保留其配置和历史。"""
 
     _set_topic_enabled(topic_id=topic_id, config=config, enabled=False)
-
-
-def _note_path(config: PaperDailyConfig, arxiv_id: str) -> tuple[str, Path]:
-    canonical_id = canonicalize_arxiv_id(arxiv_id)
-    if not canonical_id:
-        raise typer.BadParameter(f"无效的 arXiv ID：{arxiv_id}")
-    notes_dir = (config.output_dir / "notes").resolve()
-    path = (notes_dir / f"{canonical_id}.md").resolve()
-    try:
-        path.relative_to(notes_dir)
-    except ValueError as exc:  # pragma: no cover - canonical IDs make this defensive.
-        raise typer.BadParameter("无效的笔记路径") from exc
-    return canonical_id, path
-
-
-@notes_app.command("list")
-def notes_list(
-    config: Path | None = typer.Option(None, "--config", "-c"),
-) -> None:
-    """列出本地 Markdown 阅读笔记，不访问网络。"""
-
-    _, cfg = _load(config)
-    notes_dir = cfg.output_dir / "notes"
-    if not notes_dir.is_dir():
-        typer.echo("暂无本地阅读笔记。")
-        return
-    notes = sorted(
-        (path for path in notes_dir.rglob("*.md") if path.is_file()),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    if not notes:
-        typer.echo("暂无本地阅读笔记。")
-        return
-    for path in notes:
-        try:
-            relative = path.relative_to(notes_dir)
-        except ValueError:  # pragma: no cover - rglob is contained by construction.
-            continue
-        paper_id = str(relative.with_suffix("")).replace("\\", "/")
-        typer.echo(f"{paper_id}\t{path}")
-
-
-@notes_app.command("show")
-def notes_show(
-    arxiv_id: str,
-    config: Path | None = typer.Option(None, "--config", "-c"),
-) -> None:
-    """在终端显示一篇已经生成的本地 Markdown 笔记。"""
-
-    _, cfg = _load(config)
-    canonical_id, path = _note_path(cfg, arxiv_id)
-    if not path.is_file():
-        typer.echo(f"未找到 {canonical_id} 的本地阅读笔记：{path}", err=True)
-        raise typer.Exit(code=1)
-    try:
-        typer.echo(path.read_text(encoding="utf-8"), nl=False)
-    except OSError as exc:
-        typer.echo(f"无法读取本地阅读笔记：{exc}", err=True)
-        raise typer.Exit(code=1) from None
-
-
-@provider_app.command("list")
-def provider_list() -> None:
-    for name in list_agent_providers():
-        typer.echo(name)
-
-
-@provider_app.command("doctor")
-def provider_doctor(
-    config: Path | None = typer.Option(None, "--config", "-c"),
-    isolated_home: bool | None = typer.Option(
-        None,
-        "--isolated-home/--shared-home",
-        help="Check API-key-only temporary-home mode instead of the configured default.",
-    ),
-) -> None:
-    _, cfg = _load(config)
-    commands, _ = _provider_options(cfg)
-    use_isolated_home = _isolated_home_enabled(cfg, isolated_home)
-    for diagnosis in diagnose_agent_providers(
-        commands=commands,
-        isolated_home=use_isolated_home,
-    ):
-        typer.echo(json.dumps(diagnosis, ensure_ascii=False, indent=2))
-
-
-@provider_app.command("test")
-def provider_test(
-    name: str,
-    config: Path | None = typer.Option(None, "--config", "-c"),
-    isolated_home: bool | None = typer.Option(
-        None,
-        "--isolated-home/--shared-home",
-        help="Check API-key-only temporary-home mode instead of the configured default.",
-    ),
-) -> None:
-    """做无模型调用的命令与认证就绪检查。"""
-
-    _, cfg = _load(config)
-    commands, max_budget = _provider_options(cfg)
-    provider = build_agent_provider(
-        name,
-        commands=commands,
-        max_budget_usd=max_budget,
-        isolated_home=_isolated_home_enabled(cfg, isolated_home),
-    )
-    diagnosis = provider.diagnose()
-    typer.echo(json.dumps(diagnosis, ensure_ascii=False, indent=2))
-    if not diagnosis.get("ready", diagnosis.get("available", False)):
-        raise typer.Exit(code=1)
 
 
 @mcp_app.command("serve")

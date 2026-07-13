@@ -2,7 +2,7 @@
 
 The desktop server deliberately keeps PaperDaily separate from the legacy
 PaperFlow daily-push pipeline.  It reads the configured PaperDaily user and
-SQLite state directly, while long-running arXiv and Codex work runs in daemon
+SQLite state directly, while long-running arXiv and summary work runs in daemon
 threads so a browser request never owns a model or network operation.
 """
 
@@ -21,17 +21,14 @@ from uuid import uuid4
 from paperdaily.cli import DEFAULT_CONFIG_PATH
 from paperdaily.channels import render_digest_markdown
 from paperdaily.config import PaperDailyConfig, load_config, save_config
-from paperdaily.deep_read import DeepReadService
 from paperdaily.identifiers import canonicalize_arxiv_id
 from paperdaily.models import Digest, Recommendation
-from paperdaily.providers import build_agent_provider, diagnose_agent_providers
 from paperdaily.service import PaperDailyService, RunOutcome
 from paperdaily.storage import PaperDailyStore
 from paperdaily.summaries import ChineseSummaryService
 from paperdaily.topics import Topic
 from paperflow.providers import build_embedding_provider, build_llm_provider
 
-MAX_NOTE_CHARS = 180_000
 MAX_TASK_ERROR_CHARS = 1_600
 USER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 DEFAULT_TOPIC_CATEGORIES = ["cs.RO", "cs.AI", "cs.CV", "cs.LG", "cs.CL"]
@@ -44,18 +41,6 @@ ACRONYM_EXACT_PHRASES = {
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _provider_options(config: PaperDailyConfig) -> tuple[dict[str, str], float | None]:
-    commands: dict[str, str] = {}
-    max_budget: float | None = None
-    for name in ("codex", "claude"):
-        settings = config.providers.settings.get(name, {})
-        if settings.get("command"):
-            commands[name] = str(settings["command"])
-        if name == "claude" and settings.get("max_budget_usd") is not None:
-            max_budget = float(settings["max_budget_usd"])
-    return commands, max_budget
 
 
 def _paper_payload(record: dict[str, Any]) -> dict[str, Any]:
@@ -267,7 +252,6 @@ class PaperDailyGui:
             }
 
         config, service = self._context(user_id)
-        commands, _ = _provider_options(config)
         runs = service.store.list_runs(config.user_id, limit=20)
         latest_completed = next((item for item in runs if item.get("status") == "completed"), None)
         latest_populated = self._latest_populated_run(service, config.user_id)
@@ -288,10 +272,6 @@ class PaperDailyGui:
             "providers": {
                 "llm": self._provider_name(build_llm_provider()),
                 "embedding": self._provider_name(build_embedding_provider()),
-                "agents": diagnose_agent_providers(
-                    commands=commands,
-                    isolated_home=config.deep_read.isolated_home,
-                ),
             },
             "active_digest_task": self._active_task(f"paperdaily-digest:{config.user_id}"),
         }
@@ -561,69 +541,6 @@ class PaperDailyGui:
             worker,
         )
 
-    def start_codex_read(
-        self,
-        arxiv_id: str,
-        *,
-        user_id: str | None = None,
-        force_parse: bool = False,
-    ) -> dict[str, Any]:
-        canonical = canonicalize_arxiv_id(arxiv_id)
-        if not canonical:
-            raise ValueError("无效的 arXiv ID")
-
-        def worker() -> dict[str, Any]:
-            config, service = self._context(user_id)
-            commands, max_budget = _provider_options(config)
-            provider = build_agent_provider(
-                "codex",
-                preferred_order=config.providers.fallback_order,
-                commands=commands,
-                max_budget_usd=max_budget,
-                isolated_home=config.deep_read.isolated_home,
-            )
-            context = "\n\n".join(
-                f"## {topic.name}\n{topic.description}" for topic in service.enabled_topics
-            )
-            reader = DeepReadService(
-                workspace_root=config.output_dir.parent / "workspaces",
-                notes_dir=config.output_dir / "notes",
-                store=service.store,
-                max_pdf_pages=config.deep_read.max_pdf_pages,
-                max_extracted_text_chars=config.deep_read.max_extracted_text_chars,
-            )
-            agent_run_id = service.store.start_agent_run(
-                provider.name,
-                "gui-managed",
-                "reading_note",
-                canonical_id=canonical,
-            )
-            try:
-                result = reader.run(
-                    canonical,
-                    provider=provider,
-                    topic_context=context,
-                    force_parse=bool(force_parse),
-                )
-                service.store.complete_agent_run(
-                    agent_run_id,
-                    result.note,
-                    metadata={"markdown_path": str(result.markdown_path)},
-                )
-                service.record_feedback(canonical, "reading_note")
-            except Exception as exc:
-                with suppress(Exception):
-                    service.store.fail_agent_run(agent_run_id, exc)
-                raise
-            return {
-                "arxiv_id": canonical,
-                "agent_run_id": agent_run_id,
-                "provider": provider.name,
-                "note_path": str(result.markdown_path),
-            }
-
-        return self._start_task("codex_read", f"paperdaily-codex-read:{user_id or 'default'}", worker)
-
     def start_summary_retry(self, run_id: str, *, user_id: str | None = None) -> dict[str, Any]:
         normalized_run_id = str(run_id or "").strip()
         if not normalized_run_id:
@@ -713,27 +630,5 @@ class PaperDailyGui:
     def record_feedback(self, arxiv_id: str, action: str, *, user_id: str | None = None) -> dict[str, Any]:
         _config, service = self._context(user_id)
         return {"feedback": service.record_feedback(arxiv_id, action)}
-
-    def read_note(self, arxiv_id: str, *, user_id: str | None = None) -> dict[str, Any]:
-        config, _service = self._context(user_id)
-        canonical = canonicalize_arxiv_id(arxiv_id)
-        if not canonical:
-            raise ValueError("无效的 arXiv ID")
-        notes_dir = (config.output_dir / "notes").resolve()
-        path = (notes_dir / f"{canonical}.md").resolve()
-        try:
-            path.relative_to(notes_dir)
-        except ValueError as exc:  # Defensive: canonical arXiv IDs cannot traverse paths.
-            raise ValueError("无效的阅读笔记路径") from exc
-        if not path.exists():
-            return {"note": None}
-        return {
-            "note": {
-                "arxiv_id": canonical,
-                "path": str(path),
-                "content": path.read_text(encoding="utf-8")[:MAX_NOTE_CHARS],
-            }
-        }
-
 
 __all__ = ["PaperDailyGui"]

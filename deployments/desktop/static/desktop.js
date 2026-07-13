@@ -1823,7 +1823,7 @@
         catchup: { has_work: true, last_completed_date: "2026-07-04", missing_start: "2026-07-05", gap_days: 7, recommended_choice: "7d", recommended_window: { start_date: "2026-07-05", end_date: "2026-07-11", days: 7 } },
         state: { last_completed_window_end: "2026-07-04" },
         latest_run: { run_id: "paperdaily_demo_20260712", status: "completed", window_start: "2026-07-05", window_end: "2026-07-11", recommendation_count: 1, summary_count: 1 },
-        providers: { llm: { name: "demo", model: "demo" }, embedding: { name: "demo", model: "demo" }, agents: [{ provider: "codex", ready: true, sandbox: "read-only" }] }
+        providers: { llm: { name: "demo", model: "demo" }, embedding: { name: "demo", model: "demo" } }
       };
     }
     if (route === "/api/paperdaily/digest") return { ok: true, digest: { run: { run_id: "paperdaily_demo_20260712", status: "completed", window_start: "2026-07-05", window_end: "2026-07-11", recommendation_count: 1, summary_count: 1 }, recommendations: demoPaperDailyDigest(false).recommendations } };
@@ -1832,12 +1832,7 @@
       state.paperdailyDemoTask = { kind: body.dry_run ? "preview" : "digest", result: demoPaperDailyDigest(Boolean(body.dry_run)) };
       return { ok: true, task: { task_id: "paperdaily-demo-task", kind: state.paperdailyDemoTask.kind, status: "running" } };
     }
-    if (route === "/api/paperdaily/read") {
-      state.paperdailyDemoTask = { kind: "codex_read", result: { arxiv_id: body.arxiv_id, provider: "codex", note_path: "data/output/notes/demo.md" } };
-      return { ok: true, task: { task_id: "paperdaily-demo-task", kind: "codex_read", status: "running" } };
-    }
     if (route === "/api/paperdaily/task") return { ok: true, task: { task_id: "paperdaily-demo-task", status: "completed", ...(state.paperdailyDemoTask || { kind: "preview", result: demoPaperDailyDigest(true) }) } };
-    if (route === "/api/paperdaily/note") return { ok: true, note: { arxiv_id: url.searchParams.get("arxiv_id") || "2607.08182", path: "data/output/notes/demo.md", content: "# Codex 精读笔记\n\n## 一句话结论\n\n这是离线预览中的结构化阅读笔记。\n\n## 核心方法\n\n- 仅在用户点击后才执行精读。" } };
     if (route === "/api/users") {
       return { ok: true, users: ["user_demo", "user_lab", "user_founder"] };
     }
@@ -2212,7 +2207,6 @@
     const recommended = catchup.recommended_window || {};
     const llm = data?.providers?.llm || {};
     const embedding = data?.providers?.embedding || {};
-    const codex = (data?.providers?.agents || []).find((item) => item.provider === "codex") || {};
     const latest = data?.latest_run || null;
     $("pdConfigHint").textContent = configured
       ? `配置：${data.config_path} · PaperDaily 用户：${data.user_id}`
@@ -2227,8 +2221,7 @@
       : "没有待处理论文";
     $("pdLlmProvider").textContent = `${llm.name || "-"}:${llm.model || "-"}`;
     $("pdEmbedProvider").textContent = `Embedding：${embedding.name || "-"}:${embedding.model || "-"}`;
-    $("pdCodexProvider").textContent = codex.ready ? "已就绪" : "未就绪";
-    $("pdDigestCount").textContent = latest ? `最近日报 ${latest.recommendation_count || 0} 篇` : "暂无日报";
+    $("pdDigestCount").textContent = latest ? `${latest.recommendation_count || 0} 篇` : "暂无日报";
     ["pdAddTopicBtn", "pdLoadLatestBtn", "pdRetrySummariesBtn", "pdDigestRunSelect"].forEach((id) => {
       const button = $(id);
       if (button) button.disabled = !configured;
@@ -2352,7 +2345,6 @@
             <button type="button" data-pd-paper-action="interested" data-arxiv-id="${escapeHtml(paper.arxiv_id)}">感兴趣</button>
             <button type="button" data-pd-paper-action="later" data-arxiv-id="${escapeHtml(paper.arxiv_id)}">稍后</button>
             <button type="button" data-pd-paper-action="irrelevant" data-arxiv-id="${escapeHtml(paper.arxiv_id)}">不相关</button>
-            <button type="button" data-pd-paper-action="codex" data-arxiv-id="${escapeHtml(paper.arxiv_id)}">Codex 精读</button>
           </div>
         </article>`;
     }).join("");
@@ -2428,17 +2420,6 @@
     }
   }
 
-  async function startPaperDailyCodexRead(arxivId) {
-    const data = await api("/api/paperdaily/read", {
-      method: "POST",
-      body: JSON.stringify({ user_id: currentUser(), arxiv_id: arxivId })
-    });
-    setPaperDailyTaskStatus(`Codex 正在精读 ${arxivId}，完成后会写入本地阅读笔记。`, "running");
-    pollPaperDailyTask(data.task.task_id).catch((error) => {
-      setPaperDailyTaskStatus(error.message || String(error), "error");
-    });
-  }
-
   async function retryPaperDailySummaries() {
     const runId = $("pdDigestRunSelect")?.value || state.paperdailyDigest?.run?.run_id || "";
     if (!runId) throw new Error("请先加载一份日报");
@@ -2505,9 +2486,6 @@
                 : `日报已生成：${task.result?.recommendations?.length || 0} 篇推荐。`
             );
           }
-        } else if (task.kind === "codex_read") {
-          await loadPaperDailyNote(task.result?.arxiv_id || "");
-          setPaperDailyTaskStatus(`Codex 精读完成：${task.result?.arxiv_id || "论文"}。`);
         } else if (task.kind === "summary_retry") {
           await loadPaperDaily({ loadDigest: true });
           setPaperDailyTaskStatus(`中文摘要重试完成：${task.result?.completed || 0}/${task.result?.total || 0} 篇成功。`);
@@ -2552,18 +2530,6 @@
         showFeedbackToast("warning", "未能复制 arXiv ID", "浏览器拒绝了剪贴板写入。");
       }
     );
-  }
-
-  async function loadPaperDailyNote(arxivId) {
-    const data = await api(`/api/paperdaily/note?${paperdailyQuery({ arxiv_id: arxivId })}`);
-    if (!data.note) {
-      throw new Error("未找到已生成的阅读笔记。 ");
-    }
-    $("pdNotePane").hidden = false;
-    $("pdNoteTitle").textContent = `${data.note.arxiv_id} · Codex 阅读笔记`;
-    $("pdNoteMeta").textContent = data.note.path || "";
-    $("pdNoteBody").innerHTML = renderMarkdown(data.note.content || "");
-    $("pdNotePane").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function openPaperDailyTopic(topic = null) {
@@ -5985,7 +5951,7 @@
     await loadSettings();
     if (state.currentView === "paperdaily") await loadPaperDaily({ loadDigest: false });
     showSettingsMessage(`日报模型已配置为 ${llmSetupOption(data.selected_provider)?.label || data.selected_provider}。可在“设置”中测试 LLM。`);
-    showFeedbackToast("success", "日报模型已保存", "中文摘要和 LLM 重排将使用这个 Provider。Codex 精读不受影响。");
+    showFeedbackToast("success", "日报模型已保存", "中文摘要和 LLM 重排将使用这个 Provider。");
   }
 
   async function loadSettings() {
@@ -6237,14 +6203,7 @@
       const arxivId = button.dataset.arxivId;
       const action = button.dataset.pdPaperAction;
       if (!arxivId || !action) return;
-      if (action === "codex") {
-        runAction(() => startPaperDailyCodexRead(arxivId), "启动 Codex 精读");
-      } else {
-        runAction(() => recordPaperDailyFeedback(arxivId, action), "记录 PaperDaily 反馈");
-      }
-    });
-    $("pdCloseNoteBtn")?.addEventListener("click", () => {
-      $("pdNotePane").hidden = true;
+      runAction(() => recordPaperDailyFeedback(arxivId, action), "记录 PaperDaily 反馈");
     });
     $("pdTopicCancelBtn")?.addEventListener("click", closePaperDailyTopic);
     $("pdTopicCancelFooterBtn")?.addEventListener("click", closePaperDailyTopic);

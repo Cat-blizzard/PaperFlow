@@ -175,7 +175,7 @@
                 <div><span>连续处理到</span><strong id="pdWatermark">-</strong><em id="pdWatermarkDetail">等待配置</em></div>
                 <div><span>待处理范围</span><strong id="pdCatchupRange">-</strong><em id="pdCatchupDetail">-</em></div>
                 <div><span>日报模型</span><strong id="pdLlmProvider">-</strong><em id="pdEmbedProvider">-</em></div>
-                <div><span>Codex 精读</span><strong id="pdCodexProvider">-</strong><em id="pdDigestCount">-</em></div>
+                <div><span>最近日报</span><strong id="pdDigestCount">-</strong><em>-</em></div>
               </div>
             </aside>
 
@@ -200,17 +200,6 @@
                 <div id="pdDigestList" class="paperdaily-digest-list empty">暂无完成的 PaperDaily 日报。</div>
               </section>
 
-              <section id="pdNotePane" class="paperdaily-note-pane" hidden>
-                <div class="pane-head">
-                  <div>
-                    <p class="eyebrow">Codex Reading Note</p>
-                    <h2 id="pdNoteTitle">阅读笔记</h2>
-                    <p id="pdNoteMeta">-</p>
-                  </div>
-                  <button id="pdCloseNoteBtn" class="icon-button" type="button" title="关闭阅读笔记" aria-label="关闭阅读笔记">×</button>
-                </div>
-                <article id="pdNoteBody" class="markdown-body">-</article>
-              </section>
             </div>
           </div>
         </section>
@@ -418,7 +407,7 @@
           <div>
             <p class="eyebrow">PaperDaily Setup</p>
             <h2>配置日报模型</h2>
-            <p class="dialog-copy">默认使用 DeepSeek 生成中文摘要与重排；Codex 精读继续使用你的 Codex 登录额度。</p>
+            <p class="dialog-copy">默认使用 DeepSeek 生成中文摘要与重排。</p>
           </div>
           <button id="llmSetupCloseBtn" class="icon-button" type="button" title="暂不配置" aria-label="暂不配置">×</button>
         </div>

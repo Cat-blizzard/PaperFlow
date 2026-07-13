@@ -114,7 +114,6 @@ def test_server_exposes_only_bounded_business_tools_and_json_schemas(tmp_path: P
         "get_daily_digest",
         "search_recommendations",
         "record_feedback",
-        "get_note",
     }
     assert "generate_reading_note" not in by_name
     assert "query" in by_name["search_recommendations"].inputSchema["properties"]
@@ -156,28 +155,13 @@ def test_latest_digest_ignores_a_newer_failed_run(tmp_path: Path) -> None:
     assert digest["data"]["run"]["run_id"] == completed_run_id
 
 
-def test_topics_notes_and_invalid_ids_are_controlled_and_path_safe(tmp_path: Path) -> None:
-    config_path, config = _config(tmp_path)
-    notes_dir = config.output_dir / "notes"
-    notes_dir.mkdir(parents=True)
-    (notes_dir / "2607.08182.md").write_text("# Safe note", encoding="utf-8")
-    outside = tmp_path / "secret.md"
-    outside.write_text("do not disclose", encoding="utf-8")
+def test_topics_are_a_bounded_local_read(tmp_path: Path) -> None:
+    config_path, _ = _config(tmp_path)
     server = create_server(config_path)
 
     enabled = _structured_call(server, "list_topics", {"include_disabled": False})
     assert enabled["ok"] is True
     assert [item["id"] for item in enabled["data"]["topics"]] == ["embodied-vla"]
-
-    note = _structured_call(server, "get_note", {"arxiv_id": "2607.08182v3", "max_chars": 50})
-    assert note["ok"] is True
-    assert note["data"]["content"] == "# Safe note"
-
-    invalid = _structured_call(server, "get_note", {"arxiv_id": "../../secret", "max_chars": 50})
-    assert invalid["ok"] is False
-    assert invalid["error"]["code"] == "invalid_argument"
-    assert "do not disclose" not in str(invalid)
-
 
 def test_feedback_is_the_explicit_idempotent_write_operation(tmp_path: Path) -> None:
     config_path, config = _config(tmp_path)

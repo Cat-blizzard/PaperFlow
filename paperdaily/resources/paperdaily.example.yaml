@@ -33,18 +33,6 @@ catchup:
   max_window_days: 30
   max_papers_per_run: 30
   overflow_mode: curated
-providers:
-  default_provider: auto
-  fallback_order: [codex, claude]
-  codex:
-    command: codex
-  claude:
-    command: claude
-    max_budget_usd: 3.0
-deep_read:
-  isolated_home: false
-  max_pdf_pages: 100
-  max_extracted_text_chars: 500000
 topics:
   - id: embodied-vla
     name: 具身智能与 VLA

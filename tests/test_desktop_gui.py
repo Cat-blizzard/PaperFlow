@@ -51,11 +51,9 @@ def test_desktop_server_routes_are_registered() -> None:
     assert "/api/paperdaily/digest" in server.GET_ROUTES
     assert "/api/paperdaily/digests" in server.GET_ROUTES
     assert "/api/paperdaily/task" in server.GET_ROUTES
-    assert "/api/paperdaily/note" in server.GET_ROUTES
     assert "/api/paperdaily/topics" in server.POST_ROUTES
     assert "/api/paperdaily/run" in server.POST_ROUTES
     assert "/api/paperdaily/feedback" in server.POST_ROUTES
-    assert "/api/paperdaily/read" in server.POST_ROUTES
     assert 'self.send_header("Cache-Control", "no-store")' in server_source
 
 
@@ -87,7 +85,7 @@ def test_desktop_language_selector_and_response_language_contract() -> None:
     assert '$("languageSelect")?.addEventListener("change", (event) => setLocale(event.target.value))' in script
 
 
-def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_controls() -> None:
+def test_desktop_paperdaily_workspace_has_subscription_and_catchup_controls() -> None:
     html = (PROJECT_ROOT / "deployments/desktop/static/index.html").read_text(encoding="utf-8")
     script = (PROJECT_ROOT / "deployments/desktop/static/desktop.js").read_text(encoding="utf-8")
     css = (PROJECT_ROOT / "deployments/desktop/static/desktop.css").read_text(encoding="utf-8")
@@ -114,7 +112,6 @@ def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_control
     assert "function saveLlmSetup" in script
     assert "function loadPaperDailyRuns" in script
     assert "function startPaperDailyDigest" in script
-    assert "function startPaperDailyCodexRead" in script
     assert "function pollPaperDailyTask" in script
     assert "function setPaperDailyRunBusy" in script
     assert 'const title = paper.title || "Untitled paper";' in script
@@ -129,7 +126,6 @@ def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_control
     assert "navigator.clipboard.writeText" in script
     assert "已有预估或日报任务正在运行" in script
     assert "/api/paperdaily/run" in script
-    assert "/api/paperdaily/read" in script
     assert "/api/llm-setup" in script
     assert ".paperdaily-layout" in css
     assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in css
@@ -281,10 +277,6 @@ def test_desktop_server_delegates_paperdaily_routes(monkeypatch: pytest.MonkeyPa
             captured["task"] = task_id
             return {"task_id": task_id, "status": "running"}
 
-        def read_note(self, arxiv_id, *, user_id=None):
-            captured["note"] = (arxiv_id, user_id)
-            return {"note": None}
-
         def update_topic(self, action, body, *, user_id=None):
             captured["topic"] = (action, body, user_id)
             return {"topics": []}
@@ -297,10 +289,6 @@ def test_desktop_server_delegates_paperdaily_routes(monkeypatch: pytest.MonkeyPa
             captured["feedback"] = (arxiv_id, action, user_id)
             return {"feedback": {"action": action}}
 
-        def start_codex_read(self, arxiv_id, *, user_id=None, force_parse=False):
-            captured["read"] = (arxiv_id, force_parse, user_id)
-            return {"task_id": "read-task", "status": "running"}
-
     monkeypatch.setattr(server, "paperdaily_gui", FakePaperDaily())
 
     assert server.GET_ROUTES["/api/paperdaily/status"]({}, {})["configured"] is True
@@ -309,23 +297,19 @@ def test_desktop_server_delegates_paperdaily_routes(monkeypatch: pytest.MonkeyPa
     server.GET_ROUTES["/api/paperdaily/digest"]({"run_id": "run-1", "user_id": "alice"}, {})
     server.GET_ROUTES["/api/paperdaily/digests"]({"limit": "8", "user_id": "alice"}, {})
     server.GET_ROUTES["/api/paperdaily/task"]({"task_id": "task-1"}, {})
-    server.GET_ROUTES["/api/paperdaily/note"]({"arxiv_id": "2607.00001", "user_id": "alice"}, {})
     server.POST_ROUTES["/api/paperdaily/topics"]({}, {"user_id": "alice", "action": "enabled", "topic_id": "embodied-vla"})
     server.POST_ROUTES["/api/paperdaily/run"]({}, {"user_id": "alice", "choice": "7d", "dry_run": True, "limit": 9})
     server.POST_ROUTES["/api/paperdaily/feedback"]({}, {"user_id": "alice", "arxiv_id": "2607.00001", "action": "interested"})
-    server.POST_ROUTES["/api/paperdaily/read"]({}, {"user_id": "alice", "arxiv_id": "2607.00001", "force_parse": True})
 
     assert captured["created_user"] == "alice"
     assert captured["digest"] == ("run-1", "alice")
     assert captured["digests"] == (8, "alice")
     assert captured["task"] == "task-1"
-    assert captured["note"] == ("2607.00001", "alice")
     assert captured["topic"][0] == "enabled"
     assert captured["topic"][2] == "alice"
     assert captured["run"]["choice"] == "7d"
     assert captured["run"]["dry_run"] is True
     assert captured["feedback"] == ("2607.00001", "interested", "alice")
-    assert captured["read"] == ("2607.00001", True, "alice")
 
 
 def test_desktop_daily_target_date_controls_backend_fetch_window() -> None:

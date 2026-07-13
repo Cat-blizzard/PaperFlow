@@ -3669,12 +3669,6 @@ body.chat-view .source-list.empty {
   color: #a12f2f;
 }
 
-.paperdaily-paper-actions button[data-pd-paper-action="codex"] {
-  border-color: #8eb8f6;
-  background: #eaf3ff;
-  color: #175aa9;
-}
-
 .paperdaily-note-pane {
   min-height: 360px;
 }
