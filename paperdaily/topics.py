@@ -52,11 +52,43 @@ def _normalize_text(value: Any) -> str:
     return re.sub(r"[^\w]+", " ", str(value or "").casefold(), flags=re.UNICODE).strip()
 
 
+def _english_word_forms(token: str) -> set[str]:
+    """Return conservative singular/plural forms for an English token."""
+
+    forms = {token}
+    if len(token) < 4 or not token.isascii() or not token.isalpha():
+        return forms
+    if token.endswith("y") and token[-2] not in "aeiou":
+        forms.add(f"{token[:-1]}ies")
+    elif token.endswith(("s", "x", "z", "ch", "sh")):
+        forms.add(f"{token}es")
+    else:
+        forms.add(f"{token}s")
+    return forms
+
+
+def _token_matches(text_token: str, term_token: str) -> bool:
+    if text_token == term_token:
+        return True
+    # Match both directions so a user-entered plural also finds the singular.
+    return text_token in _english_word_forms(term_token) or term_token in _english_word_forms(text_token)
+
+
 def _contains(normalized_text: str, term: str) -> bool:
     normalized_term = _normalize_text(term)
     if not normalized_term or not normalized_text:
         return False
-    return f" {normalized_term} " in f" {normalized_text} "
+    text_tokens = normalized_text.split()
+    term_tokens = normalized_term.split()
+    if len(term_tokens) > len(text_tokens):
+        return False
+    return any(
+        all(
+            _token_matches(text_tokens[start + offset], term_token)
+            for offset, term_token in enumerate(term_tokens)
+        )
+        for start in range(len(text_tokens) - len(term_tokens) + 1)
+    )
 
 
 @dataclass
@@ -195,7 +227,9 @@ class TopicMatcher:
     EXACT_TITLE_WEIGHT = 0.70
     EXACT_ABSTRACT_WEIGHT = 0.50
     KEYWORD_TITLE_WEIGHT = 0.38
-    KEYWORD_ABSTRACT_WEIGHT = 0.20
+    # A clear keyword found in the abstract should meet the default 0.25
+    # threshold by itself. Ambiguous acronyms still require topic context.
+    KEYWORD_ABSTRACT_WEIGHT = 0.25
     CONTEXT_TITLE_WEIGHT = 0.10
     CONTEXT_ABSTRACT_WEIGHT = 0.05
 

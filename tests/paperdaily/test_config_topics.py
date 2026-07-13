@@ -178,6 +178,56 @@ def test_expanded_exact_phrase_matches_hyphen_or_space_without_context() -> None
 
 
 @pytest.mark.parametrize(
+    "paper_text",
+    [
+        "World Action Models Beyond Pixels",
+        "Steering World-Action Models from Human Videos",
+        "A World Action Model for Manipulation",
+    ],
+)
+def test_topic_phrases_tolerate_hyphens_and_singular_plural_forms(paper_text: str) -> None:
+    topic = embodied_topic(
+        exact_phrases=["world action model"],
+        keywords=["world action model"],
+        context_keywords=[],
+    )
+
+    result = TopicMatcher([topic]).match(paper_text, "")
+
+    assert result.matched
+    assert "world action model" in result.matched_terms
+
+
+def test_clear_keyword_in_abstract_meets_default_threshold_without_context() -> None:
+    topic = embodied_topic(
+        exact_phrases=[],
+        keywords=["tactile"],
+        context_keywords=[],
+    )
+
+    result = TopicMatcher([topic]).match(
+        "A Foundation Model for Dexterous Manipulation",
+        "We introduce a tactile representation learned from robot demonstrations.",
+    )
+
+    assert result.matched
+    assert result.score == 0.25
+    assert result.matched_terms == ["tactile"]
+
+
+def test_plural_tolerance_does_not_turn_prefixes_into_keyword_matches() -> None:
+    topic = embodied_topic(
+        exact_phrases=[],
+        keywords=["model"],
+        context_keywords=[],
+    )
+    matcher = TopicMatcher([topic])
+
+    assert matcher.match("World Models for Robots", "").matched
+    assert not matcher.match("Modeling Dynamic Worlds", "").matched
+
+
+@pytest.mark.parametrize(
     ("acronym", "expanded_title"),
     [
         ("VLA", "Vision-Language-Action Models for Robot Control"),
