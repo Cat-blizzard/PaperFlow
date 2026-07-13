@@ -3216,8 +3216,8 @@ body.chat-view .source-list.empty {
 
 .paperdaily-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 310px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(272px, 308px) minmax(0, 1fr);
+  gap: 24px;
   max-width: 1520px;
   margin: 0 auto;
   align-items: start;
@@ -3225,22 +3225,26 @@ body.chat-view .source-list.empty {
 
 .paperdaily-topics-pane,
 .paperdaily-run-pane,
-.paperdaily-digest-pane,
 .paperdaily-note-pane {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
 }
 
-.paperdaily-topics-pane {
+.paperdaily-sidebar {
   position: sticky;
   top: 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.paperdaily-topics-pane {
   padding: 14px;
 }
 
 .paperdaily-main {
   display: grid;
-  gap: 16px;
+  gap: 24px;
   min-width: 0;
 }
 
@@ -3391,11 +3395,19 @@ body.chat-view .source-list.empty {
 }
 
 .paperdaily-status-grid > div {
-  min-height: 86px;
-  border: 1px solid #dbe7f5;
-  border-radius: 8px;
-  background: #f9fbff;
-  padding: 12px;
+  min-width: 0;
+  border-top: 1px solid #e4ebf4;
+  padding: 9px 0;
+}
+
+.paperdaily-status-grid > div:nth-child(-n + 2) {
+  border-top: 0;
+}
+
+.paperdaily-runtime-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+  padding: 0 4px;
 }
 
 .paperdaily-status-grid span,
@@ -3411,9 +3423,9 @@ body.chat-view .source-list.empty {
 }
 
 .paperdaily-status-grid strong {
-  margin: 7px 0 3px;
+  margin: 5px 0 2px;
   color: #1f406c;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -3428,17 +3440,20 @@ body.chat-view .source-list.empty {
 }
 
 .paperdaily-run-pane,
-.paperdaily-digest-pane,
 .paperdaily-note-pane {
-  padding: 16px;
+  padding: 14px;
+}
+
+.paperdaily-digest-pane {
+  min-width: 0;
 }
 
 .paperdaily-run-controls {
   display: grid;
-  grid-template-columns: minmax(130px, 1.1fr) minmax(128px, 1fr) minmax(128px, 1fr) 112px auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: end;
-  gap: 10px;
-  margin-top: 16px;
+  gap: 9px;
+  margin-top: 12px;
 }
 
 .paperdaily-run-controls label,
@@ -3481,11 +3496,13 @@ body.chat-view .source-list.empty {
 
 .paperdaily-run-actions {
   display: flex;
+  grid-column: 1 / -1;
   gap: 8px;
 }
 
 .paperdaily-run-actions button {
-  min-height: 34px;
+  flex: 1 1 0;
+  min-height: 36px;
   white-space: nowrap;
 }
 
@@ -3507,27 +3524,29 @@ body.chat-view .source-list.empty {
 
 .paperdaily-digest-list {
   display: grid;
-  gap: 0;
-  margin-top: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
 }
 
 .paperdaily-paper-row {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  gap: 12px;
-  border-top: 1px solid #e7edf6;
-  padding: 14px 0;
-}
-
-.paperdaily-paper-row:first-child {
-  border-top: 0;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-content: start;
+  gap: 10px;
+  min-height: 264px;
+  border: 1px solid #dce7f5;
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+  box-shadow: 0 2px 8px rgba(31, 70, 120, 0.04);
 }
 
 .paperdaily-rank {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border: 1px solid #cde0fb;
   border-radius: 6px;
   color: var(--blue);
@@ -3556,8 +3575,43 @@ body.chat-view .source-list.empty {
   line-height: 1.5;
 }
 
+.paperdaily-paper-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.paperdaily-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 22px;
+  border: 1px solid #d5e2f2;
+  border-radius: 4px;
+  padding: 2px 6px;
+  overflow: hidden;
+  color: #45617f;
+  background: #f6f9fd;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paperdaily-tag.topic {
+  border-color: #bfdae5;
+  color: #246878;
+  background: #eef8f8;
+}
+
 .paperdaily-paper-copy .paperdaily-summary {
   color: #415a7b;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
 }
 
 .paperdaily-paper-links,
@@ -3568,7 +3622,7 @@ body.chat-view .source-list.empty {
 }
 
 .paperdaily-paper-links {
-  margin-top: 9px;
+  margin-top: 10px;
 }
 
 .paperdaily-paper-links a,
@@ -3592,16 +3646,18 @@ body.chat-view .source-list.empty {
 }
 
 .paperdaily-paper-actions {
-  align-content: start;
-  justify-content: end;
-  min-width: 152px;
+  grid-column: 1 / -1;
+  align-self: end;
+  justify-content: start;
+  min-width: 0;
+  margin-top: 2px;
 }
 
-.paperdaily-paper-actions button[data-action="irrelevant"] {
+.paperdaily-paper-actions button[data-pd-paper-action="irrelevant"] {
   color: #a12f2f;
 }
 
-.paperdaily-paper-actions button[data-action="codex"] {
+.paperdaily-paper-actions button[data-pd-paper-action="codex"] {
   border-color: #8eb8f6;
   background: #eaf3ff;
   color: #175aa9;
@@ -3768,8 +3824,12 @@ body.chat-view .source-list.empty {
     grid-template-columns: 1fr;
   }
 
-  .paperdaily-topics-pane {
+  .paperdaily-sidebar {
     position: static;
+  }
+
+  .paperdaily-digest-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .paperdaily-status-grid {
@@ -3995,6 +4055,10 @@ body.chat-view .source-list.empty {
   .paperdaily-digest-toolbar select {
     width: 100%;
     min-width: 0;
+  }
+
+  .paperdaily-digest-list {
+    grid-template-columns: 1fr;
   }
 
   .paperdaily-paper-row {

@@ -124,36 +124,26 @@
 
         <section id="paperdaily" class="view" data-title="PaperDaily" data-kicker="Research Digest">
           <div class="paperdaily-layout">
-            <aside class="paperdaily-topics-pane">
-              <div class="pane-head">
-                <div>
-                  <p class="eyebrow">Subscriptions</p>
-                  <h2>研究话题</h2>
+            <aside class="paperdaily-sidebar">
+              <section class="paperdaily-topics-pane">
+                <div class="pane-head">
+                  <div>
+                    <p class="eyebrow">Subscriptions</p>
+                    <h2>研究话题</h2>
+                  </div>
+                  <button id="pdAddTopicBtn" class="icon-button" type="button" title="添加话题" aria-label="添加话题">＋</button>
                 </div>
-                <button id="pdAddTopicBtn" class="icon-button" type="button" title="添加话题" aria-label="添加话题">＋</button>
-              </div>
-              <p id="pdConfigHint" class="meta-line compact">正在读取 PaperDaily 配置。</p>
-              <div id="pdTopicsList" class="paperdaily-topics-list empty">尚未加载研究话题。</div>
-            </aside>
-
-            <div class="paperdaily-main">
-              <div class="paperdaily-status-grid" aria-live="polite">
-                <div><span>连续处理到</span><strong id="pdWatermark">-</strong><em id="pdWatermarkDetail">等待配置</em></div>
-                <div><span>待处理范围</span><strong id="pdCatchupRange">-</strong><em id="pdCatchupDetail">-</em></div>
-                <div><span>日报模型</span><strong id="pdLlmProvider">-</strong><em id="pdEmbedProvider">-</em></div>
-                <div><span>Codex 精读</span><strong id="pdCodexProvider">-</strong><em id="pdDigestCount">-</em></div>
-              </div>
+                <p id="pdConfigHint" class="meta-line compact">正在读取 PaperDaily 配置。</p>
+                <div id="pdTopicsList" class="paperdaily-topics-list empty">尚未加载研究话题。</div>
+              </section>
 
               <section class="paperdaily-run-pane">
                 <div class="pane-head">
                   <div>
                     <p class="eyebrow">Catch-up</p>
                     <h2>检索与补推</h2>
-                    <p>先估算候选数量，再确认生成日报；预估不会调用摘要或精读模型。</p>
                   </div>
-                  <div class="button-row">
-                    <button id="pdRefreshBtn" class="icon-button" type="button" title="刷新状态" aria-label="刷新状态">↻</button>
-                  </div>
+                  <button id="pdRefreshBtn" class="icon-button" type="button" title="刷新状态" aria-label="刷新状态">↻</button>
                 </div>
                 <div class="paperdaily-run-controls">
                   <label>范围
@@ -177,15 +167,24 @@
                 <div id="pdTaskStatus" class="paperdaily-task-status" role="status" aria-live="polite">选择一个范围后可以先预估。</div>
               </section>
 
+              <div class="paperdaily-status-grid paperdaily-runtime-grid" aria-live="polite">
+                <div><span>连续处理到</span><strong id="pdWatermark">-</strong><em id="pdWatermarkDetail">等待配置</em></div>
+                <div><span>待处理范围</span><strong id="pdCatchupRange">-</strong><em id="pdCatchupDetail">-</em></div>
+                <div><span>日报模型</span><strong id="pdLlmProvider">-</strong><em id="pdEmbedProvider">-</em></div>
+                <div><span>Codex 精读</span><strong id="pdCodexProvider">-</strong><em id="pdDigestCount">-</em></div>
+              </div>
+            </aside>
+
+            <div class="paperdaily-main">
               <section class="paperdaily-digest-pane">
                 <div class="pane-head">
                   <div>
-                    <p class="eyebrow">Digest History</p>
-                    <h2>日报列表</h2>
+                    <p class="eyebrow">Daily Reading</p>
+                    <h2>论文日报</h2>
                     <p id="pdDigestMeta">正在加载已完成日报。</p>
                   </div>
                   <div class="paperdaily-digest-toolbar">
-                    <label>日报记录
+                    <label>日期
                       <select id="pdDigestRunSelect" aria-label="选择 PaperDaily 日报" disabled>
                         <option value="">暂无完成日报</option>
                       </select>

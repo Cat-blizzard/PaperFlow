@@ -2270,6 +2270,23 @@
       .join(", ");
   }
 
+  function paperDailyTopicLabel(topicId) {
+    const topic = paperdailyTopicById(topicId);
+    return topic?.name || topicId;
+  }
+
+  function paperDailyTags(paper) {
+    const categories = Array.isArray(paper?.categories) ? paper.categories : [];
+    const topics = Array.isArray(paper?.matched_topics) ? paper.matched_topics : [];
+    const categoryTags = categories
+      .slice(0, 4)
+      .map((category) => `<span class="paperdaily-tag category">${escapeHtml(category)}</span>`);
+    const topicTags = topics
+      .slice(0, 3)
+      .map((topicId) => `<span class="paperdaily-tag topic">${escapeHtml(paperDailyTopicLabel(topicId))}</span>`);
+    return [...categoryTags, ...topicTags].join("");
+  }
+
   function renderPaperDailyDigest(digest, options = {}) {
     const target = $("pdDigestList");
     if (!target) return;
@@ -2293,16 +2310,18 @@
     target.innerHTML = papers.map((paper, index) => {
       const summary = paper.summary || {};
       const title = paper.title || "Untitled paper";
-      const meta = [paper.arxiv_id, paperdailyAuthors(paper.authors), (paper.categories || []).join(" · ")]
+      const meta = [paper.arxiv_id, paperdailyAuthors(paper.authors), paper.published]
         .filter(Boolean)
         .join(" · ");
       const reason = paper.recommendation_reason || (paper.matched_terms || []).join("、");
+      const tags = paperDailyTags(paper);
       return `
         <article class="paperdaily-paper-row" data-pd-arxiv-id="${escapeHtml(paper.arxiv_id)}">
           <div class="paperdaily-rank">${escapeHtml(String(paper.rank || index + 1))}</div>
           <div class="paperdaily-paper-copy">
             <h3>${escapeHtml(title)}</h3>
             <p class="paperdaily-meta">${escapeHtml(meta)}</p>
+            ${tags ? `<div class="paperdaily-paper-tags" aria-label="论文分类和命中话题">${tags}</div>` : ""}
             ${summary.one_sentence_summary ? `<p class="paperdaily-summary">${escapeHtml(summary.one_sentence_summary)}</p>` : ""}
             ${reason ? `<p class="paperdaily-reason">推荐原因：${escapeHtml(reason)}</p>` : ""}
             <div class="paperdaily-paper-links">

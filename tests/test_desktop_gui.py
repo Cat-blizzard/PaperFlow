@@ -99,6 +99,7 @@ def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_control
     assert 'id="pdRunBtn"' in html
     assert 'id="pdDigestList"' in html
     assert 'id="pdDigestRunSelect"' in html
+    assert 'class="paperdaily-sidebar"' in html
     assert 'id="pdTopicDialog"' in html
     assert 'id="llmSetupDialog"' in html
     assert 'id="llmSetupProvider"' in html
@@ -113,11 +114,15 @@ def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_control
     assert "function pollPaperDailyTask" in script
     assert "function setPaperDailyRunBusy" in script
     assert 'const title = paper.title || "Untitled paper";' in script
+    assert "function paperDailyTags(paper)" in script
+    assert "paperdaily-paper-tags" in script
     assert "已有预估或日报任务正在运行" in script
     assert "/api/paperdaily/run" in script
     assert "/api/paperdaily/read" in script
     assert "/api/llm-setup" in script
     assert ".paperdaily-layout" in css
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in css
+    assert ".paperdaily-paper-tags" in css
     assert ".llm-setup-dialog" in css
     assert ".paperdaily-topic-dialog" in css
 
