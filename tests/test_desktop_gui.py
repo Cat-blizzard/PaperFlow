@@ -123,6 +123,7 @@ def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_control
     assert "reused_existing_digest" in script
     assert "include_handled:" in script
     assert 'limit: Number($("pdLimit").value || 0) || null' in script
+    assert "announcement_notice" in script
     assert "已有预估或日报任务正在运行" in script
     assert "/api/paperdaily/run" in script
     assert "/api/paperdaily/read" in script

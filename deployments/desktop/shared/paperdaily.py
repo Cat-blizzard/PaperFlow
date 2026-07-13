@@ -325,6 +325,7 @@ class PaperDailyGui:
             "new_recommendation_count": int(
                 run_summary.get("new_recommendation_count", run.get("recommendation_count") or 0)
             ),
+            "announcement_notice": str(run_summary.get("announcement_notice") or ""),
             "output_path": str((run.get("metadata") or {}).get("output_path") or ""),
             "error": str(run.get("error_message") or ""),
         }

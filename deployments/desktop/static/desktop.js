@@ -2303,14 +2303,19 @@
     const handled = Number(stats.handled_count || 0);
     const candidates = Number(stats.candidate_count || 0);
     const matched = Number(stats.matched_count || candidates + handled);
+    const announcementNotice = String(stats.announcement_notice || "").trim();
     const metricText = fetched || matched || handled
       ? ` · 抓取 ${fetched} · 命中 ${matched} · 已推送 ${handled} · 新增 ${papers.length}`
       : "";
     $("pdDigestMeta").textContent = papers.length
       ? `${isPreview ? "预估" : "完成"}范围：${run.window_start || digest?.window_start || "-"} 至 ${run.window_end || digest?.window_end || "-"} · ${papers.length} 篇推荐${metricText}`
-      : (handled > 0 && matched > 0
+      : (announcementNotice
+        ? announcementNotice
+        : handled > 0 && matched > 0
         ? `本次抓取 ${fetched} 篇，命中 ${matched} 篇，均已推送；没有新增论文。`
-        : `本次抓取 ${fetched} 篇，没有命中当前研究话题。`);
+        : fetched === 0
+          ? "本次未从 arXiv 获取到论文。"
+          : `本次抓取 ${fetched} 篇，没有命中当前研究话题。`);
     if (!papers.length) {
       target.className = "paperdaily-digest-list empty";
       target.textContent = "没有可展示的推荐论文。";
@@ -2466,11 +2471,14 @@
           const stats = task.result?.stats || {};
           const handled = Number(stats.handled_count || 0);
           const matched = Number(stats.matched_count || 0);
+          const announcementNotice = String(stats.announcement_notice || "").trim();
           const noNewPapers = !task.result?.recommendations?.length && handled > 0 && matched > 0;
           setPaperDailyTaskStatus(
             noNewPapers
               ? `预估完成：匹配到 ${matched} 篇，其中 ${handled} 篇已在旧日报中推送；防重机制不会再次生成。`
-              : `预估完成：${task.result?.recommendations?.length || 0} 篇候选，不会写入 watermark。`
+              : announcementNotice
+                ? `预估完成：${announcementNotice}`
+                : `预估完成：${task.result?.recommendations?.length || 0} 篇候选，不会写入 watermark。`
           );
         } else if (task.kind === "digest") {
           const stats = task.result?.stats || {};

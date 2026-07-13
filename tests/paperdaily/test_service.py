@@ -193,6 +193,24 @@ def test_one_day_digest_keeps_all_matches_when_default_limit_is_zero(tmp_path: P
     assert outcome.digest.stats["matched_count"] == 4
 
 
+def test_weekend_window_explains_absent_arxiv_announcements(tmp_path: Path) -> None:
+    config = _config(tmp_path, channels=["markdown"])
+    service = PaperDailyService(
+        config,
+        store=PaperDailyStore(config.database),
+        collector=_Collector([]),
+        embedding_provider=_HashEmbedding(),
+    )
+    window = DateWindow(date(2026, 7, 11), date(2026, 7, 12), "custom")
+
+    outcome = service.run(window, generate_summary=False, channels=["markdown"])
+
+    notice = "所选日期均为周末，arXiv 没有独立公告；周末投稿通常归入下一个工作日公告批次。"
+    assert outcome.digest.stats["announcement_notice"] == notice
+    assert outcome.digest.output_path is not None
+    assert notice in outcome.digest.output_path.read_text(encoding="utf-8")
+
+
 def test_initialize_runtime_uses_only_paperdaily_storage(tmp_path: Path) -> None:
     config = _config(tmp_path)
     service = PaperDailyService(

@@ -121,6 +121,19 @@ class PaperDailyService:
             custom_end=custom_end,
         )
 
+    @staticmethod
+    def _announcement_notice(window: DateWindow) -> str:
+        """Explain a normal empty window that contains only weekend days."""
+
+        if window.is_empty or window.start_date is None:
+            return ""
+        cursor = window.start_date
+        while cursor <= window.end_date:
+            if cursor.weekday() < 5:
+                return ""
+            cursor += timedelta(days=1)
+        return "所选日期均为周末，arXiv 没有独立公告；周末投稿通常归入下一个工作日公告批次。"
+
     def _rank(
         self,
         fetch_result: ArxivFetchResult,
@@ -332,6 +345,9 @@ class PaperDailyService:
                 "arxiv_source": fetched.source,
                 **ranking_stats,
             }
+            announcement_notice = self._announcement_notice(window)
+            if announcement_notice:
+                stats["announcement_notice"] = announcement_notice
             digest = Digest(
                 run_id=run_id or "00000000-0000-0000-0000-000000000000",
                 user_id=self.config.user_id,
@@ -393,6 +409,15 @@ class PaperDailyService:
             if not local_markdown_succeeded:
                 raise RuntimeError("本地 Markdown 日报写入失败，watermark 未推进")
 
+            run_summary = {
+                "matched_count": int(ranking_stats.get("matched_count", 0)),
+                "handled_count": int(ranking_stats.get("handled_count", 0)),
+                "candidate_count": int(ranking_stats.get("candidate_count", 0)),
+                "new_recommendation_count": len(recommendations),
+                "include_handled": bool(include_handled),
+            }
+            if announcement_notice:
+                run_summary["announcement_notice"] = announcement_notice
             self.store.complete_run(
                 run_id,
                 fetched_count=len(fetched.papers),
@@ -403,13 +428,7 @@ class PaperDailyService:
                 metadata={
                     "warnings": warnings,
                     "output_path": str(digest.output_path or ""),
-                    "run_summary": {
-                        "matched_count": int(ranking_stats.get("matched_count", 0)),
-                        "handled_count": int(ranking_stats.get("handled_count", 0)),
-                        "candidate_count": int(ranking_stats.get("candidate_count", 0)),
-                        "new_recommendation_count": len(recommendations),
-                        "include_handled": bool(include_handled),
-                    },
+                    "run_summary": run_summary,
                 },
             )
             return RunOutcome(

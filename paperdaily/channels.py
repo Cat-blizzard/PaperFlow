@@ -57,6 +57,9 @@ def render_digest_markdown(digest: Digest) -> str:
         fetched = digest.stats.get("fetched_count", 0)
         matched = digest.stats.get("matched_count", 0)
         lines.extend([f"> 抓取 {fetched} 篇，话题召回 {matched} 篇。", ""])
+        announcement_notice = _safe(digest.stats.get("announcement_notice"))
+        if announcement_notice:
+            lines.extend([f"> 提示：{announcement_notice}", ""])
 
     if not digest.recommendations:
         lines.extend(["本时间段没有达到阈值的论文。", ""])
