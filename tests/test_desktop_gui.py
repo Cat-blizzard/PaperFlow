@@ -102,6 +102,8 @@ def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_control
     assert 'id="pdTopicDialog"' in html
     assert 'id="llmSetupDialog"' in html
     assert 'id="llmSetupProvider"' in html
+    assert "研究者空间" in html
+    assert 'topbar: { workspace: "研究者空间"' in script
     assert "function loadPaperDaily" in script
     assert "function loadLlmSetup" in script
     assert "function saveLlmSetup" in script

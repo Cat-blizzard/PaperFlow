@@ -99,7 +99,7 @@
         chat: { title: "对话问答", kicker: "Chat & Ask" },
         settings: { title: "设置", kicker: "Settings" }
       },
-      topbar: { profile: "用户画像", refreshUsers: "刷新用户" },
+      topbar: { workspace: "研究者空间", refreshUsers: "刷新研究者空间" },
       status: { ready: "就绪", busy: "处理中", error: "出错" },
       health: { checking: "检查运行环境", demo: "Demo 离线预览", ready: "运行环境就绪", init: "请先初始化" },
       papers: {
@@ -183,7 +183,7 @@
         submittedNoReport: "反馈已提交，未生成新报告",
         submitted: "反馈已提交",
         feedbackCounts: (read, skip, later) => `已写入本地反馈：精读 ${read} / 不感兴趣 ${skip} / 稍后看 ${later}`,
-        profileWikiUpdated: "用户画像和 Wiki 会根据这些信号更新",
+        profileWikiUpdated: "研究者空间的反馈和本地资料会根据这些信号更新",
         wikiBackfilled: (count) => `已补写 ${count} 条精读报告到 Wiki`,
         reportEntered: "报告已进入精读报告库",
         loadPushFirst: "请先加载推荐批次",
@@ -217,7 +217,7 @@
         refresh: "刷新",
         queryPlaceholder: "搜索标题、arXiv ID 或路径",
         dateFilter: "精确日期筛选",
-        currentOnly: "仅看当前画像",
+        currentOnly: "仅看当前研究者空间",
         today: "今天",
         sourcesEmpty: "报告目录尚未加载。",
         listEmpty: "尚未加载报告列表。",
@@ -281,7 +281,7 @@
         tags: ["主题主线", "方法片段", "论文证据", "用户方向"],
         typeLabels: { method: "方法", paper: "论文/报告", frontier: "前沿", topic: "概念" },
         emptyGraphTitle: "暂无可绘制的 Wiki 图谱",
-        emptyGraphBody: "先生成精读报告或提交论文反馈，后端会把论文、章节、方法和用户画像写入本地 Wiki。",
+        emptyGraphBody: "先生成精读报告或提交论文反馈，后端会把论文、章节、方法和研究话题写入本地 Wiki。",
         emptyListTitle: "暂无 Wiki 条目",
         emptyListBody: "生成精读报告或提交反馈后，这里会展示本地 Wiki 条目。",
         noSummary: "暂无摘要。",
@@ -296,7 +296,7 @@
         stats: (stats, typeText, dirText, suffix) => `节点 ${stats.nodes || 0} · 关系 ${stats.edges || 0} · 引用 ${stats.citations || 0}${typeText}${dirText}${suffix}`,
         typePart: { paper: "论文", topic: "主题", section: "片段", trajectory: "轨迹" },
         dirPrefix: "目录",
-        defaultTags: ["本地 Wiki", "用户画像", "精读报告"],
+        defaultTags: ["本地 Wiki", "研究者空间", "精读报告"],
         noMatch: "没有匹配的知识节点。",
         itemCount: (count) => `${count} 条`,
         relationCount: (count) => `${count} 条关系`,
@@ -546,7 +546,7 @@
         chat: { title: "Chat & Ask", kicker: "Chat & Ask" },
         settings: { title: "Settings", kicker: "Settings" }
       },
-      topbar: { profile: "Profile", refreshUsers: "Refresh users" },
+      topbar: { workspace: "Research space", refreshUsers: "Refresh research spaces" },
       status: { ready: "Ready", busy: "Working", error: "Error" },
       health: { checking: "Checking runtime", demo: "Demo offline preview", ready: "Runtime ready", init: "Initialize first" },
       papers: {
@@ -664,7 +664,7 @@
         refresh: "Refresh",
         queryPlaceholder: "Search title, arXiv ID, or path",
         dateFilter: "Exact date filter",
-        currentOnly: "Current profile only",
+        currentOnly: "Current research space only",
         today: "Today",
         sourcesEmpty: "Report directory not loaded.",
         listEmpty: "Report list not loaded.",
@@ -1302,8 +1302,8 @@
       setAttr(`.rail-item[data-view="${view}"]`, "title", label);
     });
 
-    setText(".user-picker span", text.topbar.profile);
-    setAttr("#userSelect", "aria-label", text.topbar.profile);
+    setText(".user-picker span", text.topbar.workspace);
+    setAttr("#userSelect", "aria-label", text.topbar.workspace);
     setAttr("#refreshUsersBtn", "title", text.topbar.refreshUsers);
     setAttr("#refreshUsersBtn", "aria-label", text.topbar.refreshUsers);
     if ([i18n.zh.status.ready, i18n.en.status.ready].includes($("statusText")?.textContent)) setStatus(text.status.ready);
@@ -3617,7 +3617,7 @@
   }
 
   const wikiEnglishTextMap = [
-    ["当前用户画像", "Current User Profile"],
+    ["当前研究者空间", "Current Research Space"],
     ["用户反馈、精读和跳过记录形成的本地研究状态。", "User feedback, deep-reading records, and skip signals form this local research state."],
     ["知识库架构", "Knowledge Architecture"],
     ["当前主线", "Current Themes"],
@@ -3654,7 +3654,7 @@
     ["方法片段", "Method Snippets"],
     ["论文证据", "Paper Evidence"],
     ["本地 Wiki", "Local Wiki"],
-    ["用户画像", "User Profile"],
+    ["研究者空间", "Research Space"],
     ["知识库", "Knowledge Base"],
     ["关联论文", "Related Papers"],
     ["相关概念", "Related Concepts"],
