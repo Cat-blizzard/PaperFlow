@@ -3494,6 +3494,18 @@ body.chat-view .source-list.empty {
   color: #99a8bb;
 }
 
+.paperdaily-run-controls .checkline {
+  grid-column: 1 / -1;
+  min-height: 24px;
+  font-size: 12px;
+}
+
+.paperdaily-run-controls .checkline input {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+}
+
 .paperdaily-run-actions {
   display: flex;
   grid-column: 1 / -1;

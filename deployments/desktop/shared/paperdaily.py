@@ -270,6 +270,7 @@ class PaperDailyGui:
         commands, _ = _provider_options(config)
         runs = service.store.list_runs(config.user_id, limit=20)
         latest_completed = next((item for item in runs if item.get("status") == "completed"), None)
+        latest_populated = self._latest_populated_run(service, config.user_id)
         state = service.store.get_state(config.user_id) or {}
         return {
             "configured": True,
@@ -282,7 +283,8 @@ class PaperDailyGui:
             "categories": service.categories,
             "catchup": service.catchup_plan().to_dict(),
             "state": state,
-            "latest_run": self._run_payload(latest_completed) if latest_completed else None,
+            "latest_run": self._run_payload(latest_populated or latest_completed),
+            "latest_processed_run": self._run_payload(latest_completed) if latest_completed else None,
             "providers": {
                 "llm": self._provider_name(build_llm_provider()),
                 "embedding": self._provider_name(build_embedding_provider()),
@@ -305,6 +307,7 @@ class PaperDailyGui:
     def _run_payload(run: dict[str, Any] | None) -> dict[str, Any] | None:
         if run is None:
             return None
+        run_summary = dict((run.get("metadata") or {}).get("run_summary") or {})
         return {
             "run_id": str(run.get("run_id") or ""),
             "status": str(run.get("status") or ""),
@@ -317,27 +320,55 @@ class PaperDailyGui:
             "candidate_count": int(run.get("candidate_count") or 0),
             "recommendation_count": int(run.get("recommendation_count") or 0),
             "summary_count": int(run.get("summary_count") or 0),
+            "matched_count": int(run_summary.get("matched_count") or 0),
+            "handled_count": int(run_summary.get("handled_count") or 0),
+            "new_recommendation_count": int(
+                run_summary.get("new_recommendation_count", run.get("recommendation_count") or 0)
+            ),
             "output_path": str((run.get("metadata") or {}).get("output_path") or ""),
             "error": str(run.get("error_message") or ""),
+        }
+
+    @staticmethod
+    def _latest_populated_run(
+        service: PaperDailyService,
+        user_id: str,
+        *,
+        window_start: str | None = None,
+        window_end: str | None = None,
+    ) -> dict[str, Any] | None:
+        for run in service.store.list_runs(user_id, limit=100):
+            if run.get("status") != "completed" or int(run.get("recommendation_count") or 0) <= 0:
+                continue
+            if window_start is not None and str(run.get("window_start") or "") != window_start:
+                continue
+            if window_end is not None and str(run.get("window_end") or "") != window_end:
+                continue
+            return run
+        return None
+
+    def _digest_payload(self, service: PaperDailyService, run: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "run": self._run_payload(run),
+            "recommendations": [
+                _paper_payload(item)
+                for item in service.store.get_recommendations(str(run["run_id"]))
+            ],
         }
 
     def latest_digest(self, run_id: str | None = None, *, user_id: str | None = None) -> dict[str, Any]:
         config, service = self._context(user_id)
         run = service.store.get_run(run_id) if run_id else None
         if run is None:
-            runs = service.store.list_runs(config.user_id, limit=50)
-            run = next((item for item in runs if item.get("status") == "completed"), None)
+            run = self._latest_populated_run(service, config.user_id)
+            if run is None:
+                runs = service.store.list_runs(config.user_id, limit=50)
+                run = next((item for item in runs if item.get("status") == "completed"), None)
         if run is None or run.get("status") != "completed":
             return {"digest": None}
         if str(run.get("user_id") or "") != config.user_id:
             raise ValueError("该日报不属于当前 PaperDaily 用户")
-        records = service.store.get_recommendations(str(run["run_id"]))
-        return {
-            "digest": {
-                "run": self._run_payload(run),
-                "recommendations": [_paper_payload(item) for item in records],
-            }
-        }
+        return {"digest": self._digest_payload(service, run)}
 
     def list_digests(self, *, limit: int = 30, user_id: str | None = None) -> dict[str, Any]:
         """List completed digests belonging to the configured local user."""
@@ -348,7 +379,7 @@ class PaperDailyGui:
             "runs": [
                 self._run_payload(run)
                 for run in runs
-                if run.get("status") == "completed"
+                if run.get("status") == "completed" and int(run.get("recommendation_count") or 0) > 0
             ]
         }
 
@@ -461,6 +492,7 @@ class PaperDailyGui:
         limit: int | None = None,
         custom_start: str | None = None,
         custom_end: str | None = None,
+        include_handled: bool = False,
     ) -> dict[str, Any]:
         normalized_choice = str(choice or "recommended").strip().lower()
         config, service = self._context(user_id)
@@ -475,11 +507,47 @@ class PaperDailyGui:
             )
             if window.is_empty:
                 raise ValueError("当前没有待处理论文；请选择明确的历史日期窗口。")
+            normalized_limit = max(1, int(limit)) if limit is not None else None
+            if not dry_run and not include_handled:
+                preview = service.run(
+                    window,
+                    dry_run=True,
+                    limit=normalized_limit,
+                    channels=["markdown"],
+                )
+                preview_stats = dict(preview.digest.stats)
+                all_already_sent = (
+                    not preview.digest.recommendations
+                    and int(preview_stats.get("matched_count") or 0) > 0
+                    and int(preview_stats.get("handled_count") or 0) > 0
+                )
+                existing_run = self._latest_populated_run(
+                    service,
+                    config.user_id,
+                    window_start=window.start_date.isoformat(),
+                    window_end=window.end_date.isoformat(),
+                )
+                if all_already_sent and existing_run is not None:
+                    existing_digest = self._digest_payload(service, existing_run)
+                    return {
+                        "dry_run": False,
+                        "run_id": str(existing_run["run_id"]),
+                        "window_start": window.start_date.isoformat(),
+                        "window_end": window.end_date.isoformat(),
+                        "choice": window.choice,
+                        "stats": preview_stats,
+                        "warnings": [],
+                        "output_path": str((existing_run.get("metadata") or {}).get("output_path") or ""),
+                        "recommendations": existing_digest["recommendations"],
+                        "reused_existing_digest": True,
+                        "reused_run_id": str(existing_run["run_id"]),
+                    }
             outcome = service.run(
                 window,
                 dry_run=dry_run,
-                limit=max(1, int(limit)) if limit is not None else None,
+                limit=normalized_limit,
                 channels=["markdown"],
+                include_handled=bool(include_handled),
             )
             return _outcome_payload(outcome)
 

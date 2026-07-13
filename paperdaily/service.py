@@ -395,7 +395,17 @@ class PaperDailyService:
                 recommendation_count=len(recommendations),
                 summary_count=summary_count,
                 delivery_count=sum(1 for item in deliveries if item.success),
-                metadata={"warnings": warnings, "output_path": str(digest.output_path or "")},
+                metadata={
+                    "warnings": warnings,
+                    "output_path": str(digest.output_path or ""),
+                    "run_summary": {
+                        "matched_count": int(ranking_stats.get("matched_count", 0)),
+                        "handled_count": int(ranking_stats.get("handled_count", 0)),
+                        "candidate_count": int(ranking_stats.get("candidate_count", 0)),
+                        "new_recommendation_count": len(recommendations),
+                        "include_handled": bool(include_handled),
+                    },
+                },
             )
             return RunOutcome(
                 digest=digest,

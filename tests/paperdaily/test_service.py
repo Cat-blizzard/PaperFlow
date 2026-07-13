@@ -223,6 +223,34 @@ def test_live_announcement_day_uses_rss_before_api_date_query(
     assert service.store.get_state("alice")["last_completed_window_end"] == "2026-07-13"
 
 
+def test_completed_run_records_recall_and_duplicate_counts(tmp_path: Path) -> None:
+    config = _config(tmp_path, channels=["markdown"])
+    store = PaperDailyStore(config.database)
+    service = PaperDailyService(
+        config,
+        store=store,
+        collector=_Collector([_paper()]),
+        embedding_provider=_HashEmbedding(),
+    )
+    window = DateWindow(date(2026, 7, 10), date(2026, 7, 10), "yesterday")
+
+    service.run(window, generate_summary=False, channels=["markdown"])
+    repeated = service.run(window, generate_summary=False, channels=["markdown"])
+
+    assert repeated.digest.recommendations == []
+    assert repeated.digest.stats["matched_count"] == 1
+    assert repeated.digest.stats["handled_count"] == 1
+    run = store.get_run(repeated.digest.run_id)
+    assert run is not None
+    assert run["metadata"]["run_summary"] == {
+        "matched_count": 1,
+        "handled_count": 1,
+        "candidate_count": 0,
+        "new_recommendation_count": 0,
+        "include_handled": False,
+    }
+
+
 def test_markdown_success_completes_run_when_optional_feishu_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

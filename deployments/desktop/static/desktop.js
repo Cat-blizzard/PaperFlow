@@ -2168,7 +2168,7 @@
     state.paperdailyRunBusy = Boolean(busy);
     const configured = Boolean(state.paperdailyStatus?.configured);
     const disabled = !configured || state.paperdailyRunBusy;
-    ["pdPreviewBtn", "pdRunBtn", "pdWindowChoice", "pdLimit"].forEach((id) => {
+    ["pdPreviewBtn", "pdRunBtn", "pdWindowChoice", "pdLimit", "pdIncludeHandled"].forEach((id) => {
       const control = $(id);
       if (control) control.disabled = disabled;
     });
@@ -2298,9 +2298,19 @@
     if (retryButton) {
       retryButton.disabled = isPreview || !papers.some((paper) => paper?.summary?.status && paper.summary.status !== "completed");
     }
+    const stats = run.stats || digest?.stats || run || {};
+    const fetched = Number(stats.fetched_count || 0);
+    const handled = Number(stats.handled_count || 0);
+    const candidates = Number(stats.candidate_count || 0);
+    const matched = Number(stats.matched_count || candidates + handled);
+    const metricText = fetched || matched || handled
+      ? ` · 抓取 ${fetched} · 命中 ${matched} · 已推送 ${handled} · 新增 ${papers.length}`
+      : "";
     $("pdDigestMeta").textContent = papers.length
-      ? `${isPreview ? "预估" : "完成"}范围：${run.window_start || digest?.window_start || "-"} 至 ${run.window_end || digest?.window_end || "-"} · ${papers.length} 篇推荐`
-      : "暂无完成的日报。先预估或生成一次检索结果。";
+      ? `${isPreview ? "预估" : "完成"}范围：${run.window_start || digest?.window_start || "-"} 至 ${run.window_end || digest?.window_end || "-"} · ${papers.length} 篇推荐${metricText}`
+      : (handled > 0 && matched > 0
+        ? `本次抓取 ${fetched} 篇，命中 ${matched} 篇，均已推送；没有新增论文。`
+        : `本次抓取 ${fetched} 篇，没有命中当前研究话题。`);
     if (!papers.length) {
       target.className = "paperdaily-digest-list empty";
       target.textContent = "没有可展示的推荐论文。";
@@ -2389,7 +2399,8 @@
           dry_run: dryRun,
           limit: Number($("pdLimit").value || 12),
           custom_start: customStart,
-          custom_end: customEnd
+          custom_end: customEnd,
+          include_handled: $("pdIncludeHandled")?.checked === true
         })
       });
       const reused = Boolean(data.task?.reused);
@@ -2462,8 +2473,26 @@
               : `预估完成：${task.result?.recommendations?.length || 0} 篇候选，不会写入 watermark。`
           );
         } else if (task.kind === "digest") {
-          await loadPaperDaily({ loadDigest: true });
-          setPaperDailyTaskStatus(`日报已生成：${task.result?.recommendations?.length || 0} 篇推荐。`);
+          const stats = task.result?.stats || {};
+          const fetched = Number(stats.fetched_count || 0);
+          const matched = Number(stats.matched_count || 0);
+          const handled = Number(stats.handled_count || 0);
+          if (task.result?.reused_existing_digest) {
+            const reusedRunId = task.result?.reused_run_id || task.result?.run_id || "";
+            await loadPaperDaily({ loadDigest: false });
+            await loadPaperDailyRuns(reusedRunId);
+            await loadPaperDailyDigest(reusedRunId);
+            setPaperDailyTaskStatus(
+              `本次抓取 ${fetched} 篇，命中 ${matched} 篇，均已推送；已打开已有日报，不会新建空日报。`
+            );
+          } else {
+            await loadPaperDaily({ loadDigest: true });
+            setPaperDailyTaskStatus(
+              handled > 0 && matched > 0 && !task.result?.recommendations?.length
+                ? `本次抓取 ${fetched} 篇，命中 ${matched} 篇，其中 ${handled} 篇已推送；没有新增论文。`
+                : `日报已生成：${task.result?.recommendations?.length || 0} 篇推荐。`
+            );
+          }
         } else if (task.kind === "codex_read") {
           await loadPaperDailyNote(task.result?.arxiv_id || "");
           setPaperDailyTaskStatus(`Codex 精读完成：${task.result?.arxiv_id || "论文"}。`);

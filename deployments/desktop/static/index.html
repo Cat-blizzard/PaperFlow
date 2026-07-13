@@ -159,6 +159,10 @@
                   <label>开始日期 <input id="pdCustomStart" type="date" disabled></label>
                   <label>结束日期 <input id="pdCustomEnd" type="date" disabled></label>
                   <label>最多推荐 <input id="pdLimit" type="number" min="1" max="100" value="12"></label>
+                  <label class="checkline" title="重新生成时包含已经出现在日报中的论文">
+                    <input id="pdIncludeHandled" type="checkbox">
+                    包含已推送论文
+                  </label>
                   <div class="paperdaily-run-actions">
                     <button id="pdPreviewBtn" type="button">预估候选</button>
                     <button id="pdRunBtn" class="primary" type="button">生成日报</button>
