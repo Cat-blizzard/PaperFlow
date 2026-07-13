@@ -97,6 +97,7 @@ def test_desktop_paperdaily_workspace_has_subscription_catchup_and_codex_control
     assert 'id="pdTopicsList"' in html
     assert 'id="pdPreviewBtn"' in html
     assert 'id="pdRunBtn"' in html
+    assert '<option value="latest">处理最新 arXiv 公告批次</option>' in html
     assert 'id="pdDigestList"' in html
     assert 'id="pdDigestRunSelect"' in html
     assert 'id="pdIncludeHandled"' in html
