@@ -175,6 +175,25 @@ def test_dry_run_does_not_write_run_watermark_summary_delivery_or_output(tmp_pat
     assert outcome.digest.stats["llm_rerank_status"] == "skipped_dry_run"
 
 
+def test_initialize_runtime_uses_only_paperdaily_storage(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    service = PaperDailyService(
+        config,
+        store=PaperDailyStore(config.database),
+        embedding_provider=_HashEmbedding(),
+    )
+
+    result = service.initialize_runtime()
+
+    assert result == {
+        "database": str(config.database),
+        "output_dir": str(config.output_dir),
+        "user_id": "alice",
+        "topic_count": 1,
+    }
+    assert config.output_dir.exists()
+
+
 def test_live_announcement_day_uses_rss_before_api_date_query(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

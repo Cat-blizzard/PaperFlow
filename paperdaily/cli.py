@@ -149,7 +149,7 @@ def init(
     user_id: str | None = typer.Option(None, "--user-id", "-u", help="PaperFlow 用户 ID。"),
     force: bool = typer.Option(False, "--force", help="覆盖已有配置。"),
 ) -> None:
-    """创建配置、SQLite side tables 和最小用户画像。"""
+    """创建本地配置、SQLite side tables 和研究者空间。"""
 
     target = _config_path(config)
     if target.exists() and not force:
@@ -165,7 +165,7 @@ def init(
     result = service.initialize_runtime()
     typer.echo(f"配置：{target}")
     typer.echo(f"数据库：{result['database']}")
-    typer.echo(f"用户：{result['user_id']}（画像{'已创建' if result['profile_created'] else '已存在'}）")
+    typer.echo(f"研究者空间：{result['user_id']}")
     typer.echo(f"启用话题：{result['topic_count']}")
 
 
@@ -417,7 +417,7 @@ def feedback(
     action: str = typer.Argument(..., help="interested/irrelevant/later/saved/read"),
     config: Path | None = typer.Option(None, "--config", "-c"),
 ) -> None:
-    """记录显式反馈并同步 PaperFlow 兴趣画像。"""
+    """记录显式反馈，供后续话题排序使用。"""
 
     _, _, service = _service(config)
     event = service.record_feedback(arxiv_id, action)

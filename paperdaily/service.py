@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import os
 from collections.abc import Iterable
 from contextlib import suppress
@@ -76,52 +75,14 @@ class PaperDailyService:
         return sorted(values)
 
     def initialize_runtime(self) -> dict[str, Any]:
-        """Create PaperFlow/PaperDaily tables and a minimal compatible profile."""
+        """Create the local PaperDaily storage and output directory."""
 
         self.config.output_dir.mkdir(parents=True, exist_ok=True)
         self.store.initialize()
-        db_ops = importlib.import_module("skills.storage-helper.scripts.db_ops")
-        profile_updater = importlib.import_module("skills.profile-updater.scripts.update_profile")
-        db_ops.DB_PATH = self.config.database
-        db_ops.init_db()
-        existing = db_ops.get_profile(self.config.user_id)
-        created = False
-        if existing is None:
-            now = datetime.now(timezone.utc).isoformat()
-            directions = {topic.id: 1.0 for topic in self.enabled_topics}
-            combined = "\n".join(
-                f"{topic.name}: {topic.description} {' '.join(topic.exact_phrases + topic.keywords)}"
-                for topic in self.enabled_topics
-            )
-            try:
-                interest_vector = self.embedding_provider.embed(combined or "scientific papers")
-            except Exception:
-                interest_vector = []
-            profile = profile_updater.ensure_profile_schema(
-                {
-                    "user_id": self.config.user_id,
-                    "version": "0.1",
-                    "created_at": now,
-                    "updated_at": now,
-                    "core_directions": directions,
-                    "topic_weights": directions,
-                    "interest_vector": interest_vector,
-                    "must_read": {"authors": [], "institutions": [], "keywords": []},
-                    "methodology_preferences": {},
-                    "author_heat": {},
-                    "institution_heat": {},
-                    "taste_profile": {},
-                    "reading_history": [],
-                }
-            )
-            db_ops.create_profile(self.config.user_id, profile)
-            existing = profile
-            created = True
         return {
             "database": str(self.config.database),
             "output_dir": str(self.config.output_dir),
             "user_id": self.config.user_id,
-            "profile_created": created,
             "topic_count": len(self.enabled_topics),
         }
 
@@ -467,22 +428,6 @@ class PaperDailyService:
             },
         )
 
-        if recommendation:
-            try:
-                db_ops = importlib.import_module("skills.storage-helper.scripts.db_ops")
-                updater = importlib.import_module("skills.profile-updater.scripts.update_profile")
-                db_ops.DB_PATH = self.config.database
-                profile = db_ops.get_profile(self.config.user_id)
-                paper = recommendation.get("paper") or {}
-                if profile and action in {"interested", "saved", "read", "detailed", "reading_note", "irrelevant"}:
-                    selected = [paper] if action != "irrelevant" else []
-                    skipped = [paper] if action == "irrelevant" else []
-                    updated = updater.update_profile_with_feedback(profile, selected, skipped)
-                    db_ops.update_profile(self.config.user_id, updated)
-            except Exception:
-                # The durable PaperDaily event is the source of truth; legacy
-                # PaperFlow profile synchronization is best effort.
-                pass
         return feedback
 
 

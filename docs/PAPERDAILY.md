@@ -4,13 +4,13 @@ PaperDaily 是本 Fork 在 PaperFlow 之上增加的本地优先 arXiv 工作流
 
 - 按 arXiv 分类、精确短语、关键词、上下文词和负关键词召回论文；
 - 正常日报从 arXiv RSS 获取当天新公告（含可选 cross-list），再通过官方 API 补齐元数据；历史补推仍使用官方 API 日期查询；
-- 使用真实 Embedding 时加入话题/用户画像语义相似度；配置真实 LLM 后，仅重排基础候选前 N 篇，并用 MMR 控制重复；
+- 使用真实 Embedding 时加入话题语义相似度；配置真实 LLM 后，仅重排基础候选前 N 篇，并用 MMR 控制重复；
 - 只对最终推荐生成中文短摘要；未配置真实 LLM 时明确回退到原始英文摘要；
 - 将日报输出到终端和本地 Markdown，飞书文本推送可选；
 - 记录感兴趣、不相关、稍后阅读、收藏和已读反馈；
 - 通过 Codex CLI 或 Claude Code CLI 对 arXiv PDF 生成带证据位置的中文阅读笔记。
 
-PaperDaily 不替代原有 `paperflow` 命令，两套 CLI 共用 PaperFlow 的本地 SQLite 和用户画像。当前是 MVP：尚未加入飞书交互卡片或全文中英对照排版；本地只读优先的 stdio MCP Server 已可用。
+PaperDaily 将研究者空间、话题、反馈和阅读笔记保存在本地 SQLite 与 YAML 配置中，不依赖旧 PaperFlow 用户画像。当前是 MVP：尚未加入飞书交互卡片或全文中英对照排版；本地只读优先的 stdio MCP Server 已可用。
 
 ## 1. Windows PowerShell 安装
 
@@ -320,7 +320,7 @@ paperdaily run --window 7d --include-handled
 
 日期窗口按配置中的时区计算，最新目标是“当前 arXiv 公告批次”。正常日报会先读取分类 RSS（默认包含 cross-list），再按 arXiv ID 分批调用官方 API 补齐标题、摘要、作者与分类；不会依赖脆弱的 HTML 页面爬取。若 RSS 尚未更新到当天，任务会停止且**不会推进 watermark**，请在公告更新后重试。`yesterday` 仍可作为 `latest` 的兼容别名。
 
-系统先按话题规则召回，再在真实 Embedding 可用时计算话题和用户画像语义相似度，同时加入反馈、时效性和轻量质量特征。若配置了真实 LLM，系统只对基础排序前 `rerank_limit` 篇进行一次结构化重排，随后仍执行 MMR 与话题配额。重排只读取标题、摘要和订阅话题；缓存命中、未配置 LLM、失败或 dry-run 都会回退到基础排序。
+系统先按话题规则召回，再在真实 Embedding 可用时计算话题语义相似度，同时加入 PaperDaily 反馈、时效性和轻量质量特征。若配置了真实 LLM，系统只对基础排序前 `rerank_limit` 篇进行一次结构化重排，随后仍执行 MMR 与话题配额。重排只读取标题、摘要和订阅话题；缓存命中、未配置 LLM、失败或 dry-run 都会回退到基础排序。
 
 每次正式运行都会生成本地 Markdown。只有该文件成功写入后，运行才会完成并推进 watermark；飞书失败只会产生警告，不会破坏已生成的本地日报。watermark 表示的是**连续完成的日期边界**：如果你先处理较新的 7 天窗口、而更早日期仍有空档，该较新运行会被保留为成功记录，但不会静默越过空档推进 watermark。下一次 `catchup` 会优先给出最早空档；补齐后，系统会自动合并已完成的后续窗口并推进到新的连续边界。
 
@@ -366,7 +366,7 @@ paperdaily history --limit 10
 paperdaily status
 ```
 
-反馈先持久化到 PaperDaily 表，再尽力同步到原 PaperFlow 用户画像。后续排序会按命中话题使用这些反馈；失败的旧画像同步不会丢失 PaperDaily 反馈事件。
+反馈直接持久化到 PaperDaily 表。后续排序会按命中话题使用这些反馈，不依赖任何用户画像同步。
 
 ## 8. 本地阅读笔记
 

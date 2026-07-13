@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import importlib
 import math
 import re
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from datetime import date, datetime
 from typing import Any
 
@@ -71,14 +70,6 @@ def _quality_score(paper: dict[str, Any]) -> float:
     return min(1.0, score)
 
 
-def _default_profile_loader(user_id: str) -> dict[str, Any] | None:
-    try:
-        db_ops = importlib.import_module("skills.storage-helper.scripts.db_ops")
-        return db_ops.get_profile(user_id)
-    except Exception:
-        return None
-
-
 class PaperRanker:
     """Rank topic-matched papers and apply MMR plus per-topic quotas."""
 
@@ -90,7 +81,6 @@ class PaperRanker:
         limit: int = 12,
         store: PaperDailyStore | None = None,
         embedding_provider: Any = None,
-        profile_loader: Callable[[str], dict[str, Any] | None] = _default_profile_loader,
         mmr_lambda: float = 0.75,
         include_handled: bool = False,
     ) -> None:
@@ -100,7 +90,6 @@ class PaperRanker:
         self.limit = max(1, int(limit))
         self.store = store
         self.embedding_provider = embedding_provider or build_embedding_provider()
-        self.profile_loader = profile_loader
         self.mmr_lambda = max(0.0, min(1.0, float(mmr_lambda)))
         self.include_handled = include_handled
         self.last_diagnostics: dict[str, Any] = {}
@@ -190,8 +179,6 @@ class PaperRanker:
                 paper_vectors = [[] for _ in candidates]
                 semantic_enabled = False
 
-        profile = self.profile_loader(self.user_id) or {}
-        profile_vector = list(profile.get("interest_vector") or [])
         feedback = self._feedback_topic_adjustments()
         scored: list[Recommendation] = []
         for paper, vector in zip(candidates, paper_vectors, strict=True):
@@ -206,18 +193,16 @@ class PaperRanker:
                 default=0.0,
             )
             topic_semantic = max(0.0, topic_semantic) if semantic_enabled else 0.0
-            profile_semantic = max(0.0, _cosine(vector, profile_vector)) if semantic_enabled else 0.0
             published = _parse_date(paper.get("publish_date"))
             age_days = max(0, (window_end - published).days) if published else 30
             freshness = max(0.0, 1.0 - min(age_days, 30) / 30)
             quality = _quality_score(paper)
             feedback_bonus = max((feedback.get(topic_id, 0.0) for topic_id in matched_topics), default=0.0)
             score = (
-                0.46 * rule_score
-                + 0.28 * topic_semantic
-                + 0.14 * profile_semantic
-                + 0.07 * freshness
-                + 0.05 * quality
+                0.52 * rule_score
+                + 0.32 * topic_semantic
+                + 0.09 * freshness
+                + 0.07 * quality
                 + feedback_bonus
             )
             score = max(0.0, min(1.0, score))
@@ -242,7 +227,6 @@ class PaperRanker:
                     component_scores={
                         "topic_rule": round(rule_score, 6),
                         "topic_semantic": round(topic_semantic, 6),
-                        "profile_semantic": round(profile_semantic, 6),
                         "freshness": round(freshness, 6),
                         "quality": round(quality, 6),
                         "feedback": round(feedback_bonus, 6),

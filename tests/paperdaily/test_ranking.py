@@ -47,7 +47,6 @@ def test_rank_excludes_handled_papers_by_default() -> None:
         user_id="alice",
         store=store,
         embedding_provider=_HashEmbedding(),
-        profile_loader=lambda _user_id: None,
     )
 
     recommendations = ranker.rank(
@@ -69,7 +68,6 @@ def test_rank_can_explicitly_include_handled_papers() -> None:
         user_id="alice",
         store=store,
         embedding_provider=_HashEmbedding(),
-        profile_loader=lambda _user_id: None,
         include_handled=True,
     )
 
@@ -88,7 +86,6 @@ def test_rank_applies_topic_quota_and_returns_explainable_components() -> None:
         user_id="alice",
         limit=3,
         embedding_provider=_HashEmbedding(),
-        profile_loader=lambda _user_id: None,
     )
     recommendations = ranker.rank(
         [
@@ -104,7 +101,6 @@ def test_rank_applies_topic_quota_and_returns_explainable_components() -> None:
     assert set(recommendations[0].component_scores) == {
         "topic_rule",
         "topic_semantic",
-        "profile_semantic",
         "freshness",
         "quality",
         "feedback",
