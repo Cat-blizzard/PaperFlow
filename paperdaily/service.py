@@ -150,6 +150,9 @@ class PaperDailyService:
             embedding_provider=self.embedding_provider,
             mmr_lambda=self.config.daily.mmr_lambda,
             include_handled=include_handled,
+            semantic_recall_enabled=self.config.daily.semantic_recall_enabled,
+            semantic_recall_threshold=self.config.daily.semantic_recall_threshold,
+            semantic_recall_limit=self.config.daily.semantic_recall_limit,
         )
         candidates = ranker.rank_candidates(fetch_result.papers, window_end=fetch_result.window_end)
         if use_llm_rerank:
@@ -411,6 +414,14 @@ class PaperDailyService:
 
             run_summary = {
                 "matched_count": int(ranking_stats.get("matched_count", 0)),
+                "rule_matched_count": int(ranking_stats.get("rule_matched_count", 0)),
+                "semantic_recalled_count": int(ranking_stats.get("semantic_recalled_count", 0)),
+                "semantic_enabled": bool(ranking_stats.get("semantic_enabled", False)),
+                "semantic_recall_threshold": float(ranking_stats.get("semantic_recall_threshold", 0.0)),
+                "embedding_provider": str(ranking_stats.get("embedding_provider") or ""),
+                "embedding_model": str(ranking_stats.get("embedding_model") or ""),
+                "embedding_cache_hits": int(ranking_stats.get("embedding_cache_hits", 0)),
+                "embedding_call_count": int(ranking_stats.get("embedding_call_count", 0)),
                 "handled_count": int(ranking_stats.get("handled_count", 0)),
                 "candidate_count": int(ranking_stats.get("candidate_count", 0)),
                 "new_recommendation_count": len(recommendations),

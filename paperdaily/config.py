@@ -56,6 +56,9 @@ class DailyConfig:
     llm_rerank_max_tokens: int = 3000
     llm_rerank_input_cost_per_million_tokens: float = 0.0
     llm_rerank_output_cost_per_million_tokens: float = 0.0
+    semantic_recall_enabled: bool = True
+    semantic_recall_threshold: float = 0.58
+    semantic_recall_limit: int = 30
     summary_language: str = "zh-CN"
     generate_chinese_summary: bool = True
     channels: list[str] = field(default_factory=lambda: ["terminal", "markdown"])
@@ -81,6 +84,9 @@ class DailyConfig:
         self.llm_rerank_output_cost_per_million_tokens = float(
             self.llm_rerank_output_cost_per_million_tokens
         )
+        self.semantic_recall_enabled = bool(self.semantic_recall_enabled)
+        self.semantic_recall_threshold = float(self.semantic_recall_threshold)
+        self.semantic_recall_limit = int(self.semantic_recall_limit)
         self.summary_language = str(self.summary_language or "zh-CN").strip()
         self.channels = _as_string_list(self.channels, "daily.channels")
         self.arxiv_page_size = int(self.arxiv_page_size)
@@ -105,6 +111,10 @@ class DailyConfig:
             self.llm_rerank_output_cost_per_million_tokens,
         ) < 0:
             raise ConfigError("daily.llm rerank token costs cannot be negative")
+        if not 0.0 <= self.semantic_recall_threshold <= 1.0:
+            raise ConfigError("daily.semantic_recall_threshold must be between 0 and 1")
+        if self.semantic_recall_limit <= 0:
+            raise ConfigError("daily.semantic_recall_limit must be positive")
         if self.arxiv_page_size <= 0 or self.arxiv_max_results <= 0:
             raise ConfigError("daily arXiv page/result limits must be positive")
         if self.arxiv_request_delay_seconds < 0 or self.arxiv_cache_ttl_hours < 0:
@@ -140,6 +150,9 @@ class DailyConfig:
             llm_rerank_output_cost_per_million_tokens=raw.get(
                 "llm_rerank_output_cost_per_million_tokens", 0.0
             ),
+            semantic_recall_enabled=bool(raw.get("semantic_recall_enabled", True)),
+            semantic_recall_threshold=raw.get("semantic_recall_threshold", 0.58),
+            semantic_recall_limit=raw.get("semantic_recall_limit", 30),
             summary_language=raw.get("summary_language", raw.get("language", "zh-CN")),
             generate_chinese_summary=bool(raw.get("generate_chinese_summary", True)),
             channels=raw.get("channels", ["terminal", "markdown"]),
@@ -163,6 +176,9 @@ class DailyConfig:
             "llm_rerank_max_tokens": self.llm_rerank_max_tokens,
             "llm_rerank_input_cost_per_million_tokens": self.llm_rerank_input_cost_per_million_tokens,
             "llm_rerank_output_cost_per_million_tokens": self.llm_rerank_output_cost_per_million_tokens,
+            "semantic_recall_enabled": self.semantic_recall_enabled,
+            "semantic_recall_threshold": self.semantic_recall_threshold,
+            "semantic_recall_limit": self.semantic_recall_limit,
             "summary_language": self.summary_language,
             "generate_chinese_summary": self.generate_chinese_summary,
             "channels": list(self.channels),

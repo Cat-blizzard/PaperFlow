@@ -1,4 +1,4 @@
-"""Explainable topic-first ranking built on PaperFlow embedding providers."""
+"""Explainable hybrid recall and ranking for PaperDaily."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import math
 import re
 from collections import defaultdict
 from collections.abc import Iterable
+from contextlib import suppress
 from datetime import date, datetime
 from typing import Any
 
@@ -13,7 +14,7 @@ from paperflow.providers import build_embedding_provider
 
 from .identifiers import canonicalize_arxiv_id
 from .models import Recommendation
-from .storage import PaperDailyStore
+from .storage import PaperDailyStore, hash_abstract
 from .topics import Topic, TopicMatcher
 
 
@@ -71,7 +72,7 @@ def _quality_score(paper: dict[str, Any]) -> float:
 
 
 class PaperRanker:
-    """Rank topic-matched papers and apply MMR plus per-topic quotas."""
+    """Recall papers with rules and semantics, then rank and diversify them."""
 
     def __init__(
         self,
@@ -83,6 +84,9 @@ class PaperRanker:
         embedding_provider: Any = None,
         mmr_lambda: float = 0.75,
         include_handled: bool = False,
+        semantic_recall_enabled: bool = True,
+        semantic_recall_threshold: float = 0.58,
+        semantic_recall_limit: int = 30,
     ) -> None:
         self.topics = [topic for topic in topics if topic.enabled]
         self.matcher = TopicMatcher(self.topics)
@@ -92,6 +96,11 @@ class PaperRanker:
         self.embedding_provider = embedding_provider or build_embedding_provider()
         self.mmr_lambda = max(0.0, min(1.0, float(mmr_lambda)))
         self.include_handled = include_handled
+        self.semantic_recall_enabled = bool(semantic_recall_enabled)
+        self.semantic_recall_threshold = float(semantic_recall_threshold)
+        self.semantic_recall_limit = max(1, int(semantic_recall_limit))
+        if not 0.0 <= self.semantic_recall_threshold <= 1.0:
+            raise ValueError("semantic_recall_threshold must be between 0 and 1")
         self.last_diagnostics: dict[str, Any] = {}
 
     @staticmethod
@@ -105,20 +114,100 @@ class PaperRanker:
 
     @property
     def semantic_enabled(self) -> bool:
-        return str(getattr(self.embedding_provider, "name", "hash")) != "hash"
+        provider = str(getattr(self.embedding_provider, "name", "hash") or "hash").casefold()
+        return self.semantic_recall_enabled and provider != "hash"
 
     def _topic_text(self, topic: Topic) -> str:
         return "\n".join(
             filter(
                 None,
                 [
-                    topic.name,
+                    f"Research topic: {topic.name}",
                     topic.description,
-                    " ".join(topic.exact_phrases),
-                    " ".join(topic.keywords),
+                    f"Core phrases: {' '.join(topic.exact_phrases)}" if topic.exact_phrases else "",
+                    f"Keywords: {' '.join(topic.keywords)}" if topic.keywords else "",
+                    f"Context: {' '.join(topic.context_keywords)}" if topic.context_keywords else "",
                 ],
             )
         )
+
+    @staticmethod
+    def _paper_text(paper: dict[str, Any]) -> str:
+        return f"Title: {paper.get('title', '')}\nAbstract: {paper.get('abstract', '')}"
+
+    @property
+    def _embedding_identity(self) -> tuple[str, str, int]:
+        provider = str(getattr(self.embedding_provider, "name", "unknown") or "unknown").lower()
+        model = str(getattr(self.embedding_provider, "model", "unknown") or "unknown")
+        dimensions = max(0, int(getattr(self.embedding_provider, "dimensions", 0) or 0))
+        return provider, model, dimensions
+
+    def _embed_cached(
+        self,
+        document_kind: str,
+        documents: list[tuple[str, str]],
+        *,
+        batch_size: int = 64,
+    ) -> tuple[list[list[float]], int, int]:
+        """Embed documents in bounded batches and reuse exact local cache hits."""
+
+        if not documents:
+            return [], 0, 0
+        provider, model, dimensions = self._embedding_identity
+        vectors: list[list[float] | None] = [None] * len(documents)
+        missing: list[tuple[int, str, str, str]] = []
+        cache_hits = 0
+        for index, (document_id, text) in enumerate(documents):
+            content_hash = hash_abstract(text)
+            cached = None
+            if self.store is not None and dimensions > 0:
+                with suppress(Exception):
+                    cached = self.store.get_embedding(
+                        document_kind,
+                        document_id,
+                        content_hash,
+                        provider,
+                        model,
+                        dimensions,
+                    )
+            if cached is not None:
+                vectors[index] = list(cached.get("vector") or [])
+                cache_hits += 1
+            else:
+                missing.append((index, document_id, text, content_hash))
+
+        normalized_batch_size = max(1, int(batch_size))
+        call_count = 0
+        for start in range(0, len(missing), normalized_batch_size):
+            batch = missing[start : start + normalized_batch_size]
+            generated = [
+                list(vector)
+                for vector in self.embedding_provider.embed_batch([item[2] for item in batch])
+            ]
+            call_count += 1
+            if len(generated) != len(batch):
+                raise ValueError("embedding provider returned an unexpected batch size")
+            for (index, document_id, _text, content_hash), vector in zip(batch, generated, strict=True):
+                if not vector:
+                    raise ValueError("embedding provider returned an empty vector")
+                if dimensions > 0 and len(vector) != dimensions:
+                    raise ValueError("embedding provider returned an unexpected vector dimension")
+                vectors[index] = vector
+                if self.store is not None:
+                    with suppress(Exception):
+                        self.store.save_embedding(
+                            document_kind,
+                            document_id,
+                            content_hash,
+                            provider,
+                            model,
+                            len(vector),
+                            vector,
+                        )
+
+        if any(vector is None for vector in vectors):  # pragma: no cover
+            raise RuntimeError("embedding batch did not produce every requested vector")
+        return [list(vector or []) for vector in vectors], cache_hits, call_count
 
     def _feedback_topic_adjustments(self) -> dict[str, float]:
         if self.store is None:
@@ -146,59 +235,128 @@ class PaperRanker:
         return {key: max(-0.20, min(0.20, value)) for key, value in adjustments.items()}
 
     def rank_candidates(self, papers: Iterable[dict[str, Any]], *, window_end: date) -> list[Recommendation]:
-        """Return all deterministically scored candidates before MMR selection.
+        """Recall and score candidates before LLM reranking and MMR selection."""
 
-        This separation lets the service rerank a small, bounded prefix with an
-        LLM while retaining the same rule-based recall, quotas, and diversity
-        behaviour for offline users.
-        """
         source = list(papers)
-        matched = self.matcher.filter(source)
+        annotated = [self.matcher.annotate(paper) for paper in source]
         handled: set[str] = set()
         if self.store is not None and not self.include_handled:
             handled = self.store.list_handled_canonical_ids(self.user_id)
 
-        candidates: list[dict[str, Any]] = []
-        for paper in matched:
+        valid: list[dict[str, Any]] = []
+        for paper in annotated:
             canonical = canonicalize_arxiv_id(paper.get("arxiv_id") or paper.get("url"))
-            if not canonical or canonical in handled:
+            if not canonical:
                 continue
             paper["arxiv_id"] = canonical
-            candidates.append(paper)
+            valid.append(paper)
 
+        semantic_enabled = self.semantic_enabled and bool(self.topics)
         topic_vectors: dict[str, list[float]] = {}
-        semantic_enabled = self.semantic_enabled
-        if semantic_enabled and self.topics:
+        paper_vectors: list[list[float]] = [[] for _ in valid]
+        embedding_cache_hits = 0
+        embedding_call_count = 0
+        if semantic_enabled:
             try:
-                vectors = self.embedding_provider.embed_batch([self._topic_text(topic) for topic in self.topics])
+                vectors, cache_hits, call_count = self._embed_cached(
+                    "topic",
+                    [(topic.id, self._topic_text(topic)) for topic in self.topics],
+                )
                 topic_vectors = {
                     topic.id: list(vector)
                     for topic, vector in zip(self.topics, vectors, strict=True)
                 }
+                embedding_cache_hits += cache_hits
+                embedding_call_count += call_count
+                paper_vectors, cache_hits, call_count = self._embed_cached(
+                    "paper",
+                    [(str(paper["arxiv_id"]), self._paper_text(paper)) for paper in valid],
+                )
+                embedding_cache_hits += cache_hits
+                embedding_call_count += call_count
             except Exception:
                 semantic_enabled = False
                 topic_vectors = {}
+                paper_vectors = [[] for _ in valid]
 
-        paper_vectors: list[list[float]] = []
-        if candidates:
-            texts = [f"Title: {paper.get('title', '')}\nAbstract: {paper.get('abstract', '')}" for paper in candidates]
-            try:
-                paper_vectors = [list(vector) for vector in self.embedding_provider.embed_batch(texts)]
-            except Exception:
-                paper_vectors = [[] for _ in candidates]
-                semantic_enabled = False
+        topic_names = {topic.id: topic.name for topic in self.topics}
+        matched: list[dict[str, Any]] = []
+        semantic_only: list[tuple[float, dict[str, Any]]] = []
+        semantic_match_count = 0
+        for paper, vector in zip(valid, paper_vectors, strict=True):
+            match_data = dict(paper.get("topic_match") or {})
+            rule_topics = list(paper.get("matched_topics") or [])
+            all_semantic_scores: dict[str, float] = {}
+            semantic_recall_scores: dict[str, float] = {}
+            if semantic_enabled:
+                blocked_topics = {
+                    str(detail.get("topic_id") or "")
+                    for detail in match_data.get("details") or []
+                    if detail.get("negative_terms")
+                }
+                for topic in self.topics:
+                    if topic.id in blocked_topics:
+                        continue
+                    similarity = round(max(0.0, _cosine(vector, topic_vectors.get(topic.id, []))), 6)
+                    all_semantic_scores[topic.id] = similarity
+                    if similarity >= self.semantic_recall_threshold:
+                        semantic_recall_scores[topic.id] = similarity
 
-        feedback = self._feedback_topic_adjustments()
-        scored: list[Recommendation] = []
-        for paper, vector in zip(candidates, paper_vectors, strict=True):
+            semantic_topics = sorted(
+                semantic_recall_scores,
+                key=semantic_recall_scores.get,
+                reverse=True,
+            )
+            if semantic_topics:
+                semantic_match_count += 1
+            combined_topics = list(dict.fromkeys([*rule_topics, *semantic_topics]))
+            merged_topic_scores = dict(match_data.get("topic_scores") or {})
+            for topic_id, similarity in semantic_recall_scores.items():
+                merged_topic_scores[topic_id] = max(
+                    float(merged_topic_scores.get(topic_id, 0.0)),
+                    similarity,
+                )
+
+            paper["rule_matched_topics"] = rule_topics
+            paper["semantic_topic_scores"] = all_semantic_scores
+            paper["semantic_recall_scores"] = semantic_recall_scores
+            paper["semantic_recall"] = bool(semantic_topics and not rule_topics)
             paper["embedding"] = vector
             paper["embedding_model"] = (
                 f"{getattr(self.embedding_provider, 'name', 'unknown')}:{getattr(self.embedding_provider, 'model', '')}"
+                if semantic_enabled
+                else ""
             )
+            match_data.update(
+                {
+                    "matched": bool(combined_topics),
+                    "topics": combined_topics,
+                    "topic_names": [topic_names.get(topic_id, topic_id) for topic_id in combined_topics],
+                    "topic_scores": merged_topic_scores,
+                    "semantic_topic_scores": all_semantic_scores,
+                    "semantic_recall_scores": semantic_recall_scores,
+                }
+            )
+            paper["topic_match"] = match_data
+            paper["matched_topics"] = combined_topics
+            if rule_topics:
+                matched.append(paper)
+            elif semantic_topics:
+                semantic_only.append((max(semantic_recall_scores.values()), paper))
+
+        semantic_only.sort(key=lambda item: item[0], reverse=True)
+        semantic_recalled = [paper for _score, paper in semantic_only[: self.semantic_recall_limit]]
+        matched.extend(semantic_recalled)
+        candidates = [paper for paper in matched if paper["arxiv_id"] not in handled]
+
+        feedback = self._feedback_topic_adjustments()
+        scored: list[Recommendation] = []
+        for paper in candidates:
             rule_score = float(paper.get("topic_score") or 0.0)
             matched_topics = list(paper.get("matched_topics") or [])
+            all_semantic_scores = dict(paper.get("semantic_topic_scores") or {})
             topic_semantic = max(
-                (_cosine(vector, topic_vectors[topic_id]) for topic_id in matched_topics if topic_id in topic_vectors),
+                (float(all_semantic_scores.get(topic_id, 0.0)) for topic_id in matched_topics),
                 default=0.0,
             )
             topic_semantic = max(0.0, topic_semantic) if semantic_enabled else 0.0
@@ -206,7 +364,10 @@ class PaperRanker:
             age_days = max(0, (window_end - published).days) if published else 30
             freshness = max(0.0, 1.0 - min(age_days, 30) / 30)
             quality = _quality_score(paper)
-            feedback_bonus = max((feedback.get(topic_id, 0.0) for topic_id in matched_topics), default=0.0)
+            feedback_bonus = max(
+                (feedback.get(topic_id, 0.0) for topic_id in matched_topics),
+                default=0.0,
+            )
             score = (
                 0.52 * rule_score
                 + 0.32 * topic_semantic
@@ -215,16 +376,26 @@ class PaperRanker:
                 + feedback_bonus
             )
             score = max(0.0, min(1.0, score))
-            match_data = paper.get("topic_match") or {}
-            topic_names = list(match_data.get("topic_names") or matched_topics)
             terms = list(paper.get("matched_terms") or [])
-            reason_parts = []
-            if topic_names:
-                reason_parts.append(f"命中 {', '.join(topic_names)}")
+            reason_parts: list[str] = []
+            rule_topics = list(paper.get("rule_matched_topics") or [])
+            if rule_topics:
+                reason_parts.append(
+                    f"命中 {', '.join(topic_names.get(topic_id, topic_id) for topic_id in rule_topics)}"
+                )
             if terms:
                 reason_parts.append(f"关键词/短语：{', '.join(terms[:5])}")
-            if semantic_enabled and topic_semantic > 0:
-                reason_parts.append(f"话题语义相似度 {topic_semantic:.2f}")
+            semantic_recall_scores = dict(paper.get("semantic_recall_scores") or {})
+            if semantic_enabled and semantic_recall_scores:
+                semantic_labels = ", ".join(
+                    f"{topic_names.get(topic_id, topic_id)} {similarity:.2f}"
+                    for topic_id, similarity in sorted(
+                        semantic_recall_scores.items(),
+                        key=lambda item: item[1],
+                        reverse=True,
+                    )
+                )
+                reason_parts.append(f"摘要语义命中：{semantic_labels}")
             scored.append(
                 Recommendation(
                     rank=0,
@@ -247,11 +418,20 @@ class PaperRanker:
         self.last_diagnostics = {
             "input_count": len(source),
             "matched_count": len(matched),
+            "rule_matched_count": sum(bool(paper.get("rule_matched_topics")) for paper in matched),
+            "semantic_match_count": semantic_match_count,
+            "semantic_recalled_count": len(semantic_recalled),
+            "semantic_recall_considered_count": len(valid) if semantic_enabled else 0,
+            "semantic_recall_threshold": self.semantic_recall_threshold,
+            "semantic_recall_limit": self.semantic_recall_limit,
             "handled_count": len(matched) - len(candidates),
             "candidate_count": len(candidates),
             "selected_count": 0,
             "semantic_enabled": semantic_enabled,
             "embedding_provider": str(getattr(self.embedding_provider, "name", "unknown")),
+            "embedding_model": str(getattr(self.embedding_provider, "model", "unknown")),
+            "embedding_cache_hits": embedding_cache_hits,
+            "embedding_call_count": embedding_call_count,
         }
         return scored
 
@@ -307,11 +487,14 @@ class PaperRanker:
 
         for rank, item in enumerate(selected, start=1):
             item.rank = rank
+            # Vectors are transient ranking data; the dedicated cache owns
+            # persistence so recommendation rows stay small.
+            item.paper.pop("embedding", None)
         self.last_diagnostics["selected_count"] = len(selected)
         return selected
 
     def rank(self, papers: Iterable[dict[str, Any]], *, window_end: date) -> list[Recommendation]:
-        """Compatibility entry point: deterministic candidates followed by MMR."""
+        """Compatibility entry point: hybrid candidates followed by MMR."""
 
         return self.select(self.rank_candidates(papers, window_end=window_end))
 

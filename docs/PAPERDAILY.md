@@ -19,7 +19,7 @@ Copy-Item .env.example .env
 .\.venv\Scripts\paperdaily.exe doctor
 ```
 
-没有 API Key 也可以验证抓取、话题匹配和 Markdown 输出；但中文摘要会回退为原始英文摘要，语义排序会使用较弱的 `hash` embedding。
+没有 API Key 也可以验证抓取、话题匹配和 Markdown 输出；但中文摘要会回退为原始英文摘要，`hash` embedding 不会启用语义召回。
 
 ## 配置中文摘要
 
@@ -32,7 +32,7 @@ PAPERFLOW_LLM_API_KEY=your-deepseek-api-key
 PAPERFLOW_LLM_BASE_URL=https://api.deepseek.com
 ```
 
-DeepSeek 不提供 embedding。需要语义排序时，再选择一个 OpenAI Embeddings 兼容服务或本地模型：
+DeepSeek 不提供 embedding。需要理解 Abstract 并召回没有字面关键词的论文时，再选择一个 OpenAI Embeddings 兼容服务或本地模型：
 
 ```env
 PAPERFLOW_EMBED_PROVIDER=openai
@@ -40,6 +40,16 @@ PAPERFLOW_EMBED_MODEL=BAAI/bge-m3
 PAPERFLOW_EMBED_API_KEY=your-embedding-api-key
 PAPERFLOW_EMBED_BASE_URL=https://your-embedding-endpoint/v1
 ```
+
+语义召回默认阈值为 `0.58`，每次最多补回 30 篇无字面命中的论文。参数位于 PaperDaily YAML 配置的 `daily` 段：
+
+```yaml
+semantic_recall_enabled: true
+semantic_recall_threshold: 0.58
+semantic_recall_limit: 30
+```
+
+标题、Abstract 和话题向量缓存在本地 SQLite；论文内容、Provider、模型或维度变化时才会重新生成。
 
 ## GUI 工作流
 
@@ -93,7 +103,7 @@ paperdaily feedback 2607.08974 irrelevant
 
 常规日报优先读取 arXiv RSS 公告，并使用官方 API 补充论文元数据；补推按日期窗口使用官方 API 查询。请求有缓存和限速，时间窗口会重叠并用 arXiv ID 去重，因此任务中断后可以安全重跑。
 
-推荐首先按分类和关键词召回。关键词会同时检查标题与 Abstract，并兼容连字符和常见英文单复数；VLA、WAM 等歧义缩写仍需机器人相关语境。之后再结合负关键词、可选 embedding、LLM 重排和 MMR 去重。arXiv 没有统一可靠的作者关键词字段，因此系统使用标题、摘要和官方分类作为输入。
+推荐首先按分类和关键词召回。关键词会同时检查标题与 Abstract，并兼容连字符和常见英文单复数；VLA、WAM 等歧义缩写仍需机器人相关语境。配置真实 embedding 后，系统还会比较每个话题描述与分类范围内全部 Abstract 的语义相似度，补回达到阈值但没有字面关键词的论文；负关键词可以阻止错误的语义补召。随后由 DeepSeek 复核靠前候选，并用 MMR 去重。arXiv 没有统一可靠的作者关键词字段，因此系统使用标题、摘要和官方分类作为输入。
 
 ## MCP
 

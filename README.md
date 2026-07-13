@@ -8,6 +8,7 @@
 
 - 只跟踪 arXiv：常规日报通过 arXiv RSS 获取最新公告，并用官方 API 补全元数据；历史补推使用官方 API 日期查询。
 - 按研究话题订阅：分类、短语、关键词、上下文词和负关键词共同筛选，`VLA`、`WAM` 等缩写会做语境消歧。
+- 通过 Abstract 语义召回：配置真实 Embedding 后，即使论文没有出现字面关键词，只要摘要概念与话题接近也能进入候选。
 - 输出日报卡片：英文原标题保持不变，显示 arXiv 分类、命中话题、中文短摘要、推荐理由和论文/PDF链接。
 - 生成中文短摘要：可用 DeepSeek 或其他 OpenAI 兼容文本 API；未配置真实 LLM 时明确回退到英文原摘要。
 - 当天日报默认不限数量：所有通过话题规则、且未推送过的论文都会保留；历史补推仍默认限制数量，避免遗漏多天时产生过长列表。
@@ -23,7 +24,7 @@ arXiv RSS / API
         |
 研究话题召回 (分类 + 关键词 + 语境消歧)
         |
-规则排序 + 可选语义排序 + 可选 LLM 重排 + 去重
+规则召回 + Abstract 语义召回 + DeepSeek 重排 + 去重
         |
 中文短摘要 / Markdown 日报 / 本地 GUI
         |
@@ -50,7 +51,7 @@ Copy-Item .env.example .env
 .\.venv\Scripts\paperdaily.exe doctor
 ```
 
-`doctor` 应显示当前使用的摘要与 Embedding Provider。首次安装时即使没有 API Key 也可运行，但会使用 `mock` 摘要和 `hash` embedding，只适合验证流程，不能提供真正的中文摘要或语义排序。
+`doctor` 应显示当前使用的摘要与 Embedding Provider。首次安装时即使没有 API Key 也可运行，但会使用 `mock` 摘要和 `hash` embedding，只适合验证流程，不能提供真正的中文摘要或语义召回。
 
 ## 配置模型
 
@@ -67,7 +68,7 @@ PAPERFLOW_LLM_BASE_URL=https://api.deepseek.com
 PAPERFLOW_EMBED_PROVIDER=hash
 ```
 
-DeepSeek 文本 API 不提供 embedding。要启用语义排序，请另配一个 OpenAI Embeddings 兼容服务，或使用本地模型：
+DeepSeek 文本 API 不提供 embedding。要让系统理解 Abstract 并补回无关键词论文，请另配一个 OpenAI Embeddings 兼容服务，或使用本地模型：
 
 ```env
 # 方案 A：独立 Embedding API
@@ -80,6 +81,17 @@ PAPERFLOW_EMBED_BASE_URL=https://your-embedding-endpoint/v1
 # PAPERFLOW_EMBED_PROVIDER=sentence_transformers
 # PAPERFLOW_EMBED_MODEL=BAAI/bge-m3
 ```
+
+语义召回参数位于 `data/paperdaily/config.yaml` 或对应研究者空间配置中：
+
+```yaml
+daily:
+  semantic_recall_enabled: true
+  semantic_recall_threshold: 0.58
+  semantic_recall_limit: 30
+```
+
+语义向量按论文内容、Provider、模型和维度缓存在 SQLite；同一版本重复运行不会再次请求 Embedding API。
 
 保存后重新启动 GUI 或再次执行：
 
@@ -148,8 +160,9 @@ arXiv 不提供统一、可靠的作者关键词字段。因此日报以论文�
 1. 分类决定宽召回范围，例如 `cs.RO`、`cs.AI`、`cs.CV`、`cs.LG`、`cs.CL`。
 2. 研究话题中的短语和关键词会同时匹配标题与 Abstract，并兼容连字符及常见英文单复数。
 3. 缩写需要机器人相关语境，降低 `VLA`、`WAM` 的误报。
-4. 可用 embedding 时加入话题语义相似度；可用 LLM 时只重排前一小批候选。
-5. MMR 负责降低日报中相似论文的重复度，历史反馈会影响排序。
+4. 可用真实 embedding 时，会对分类范围内的全部标题和 Abstract 做语义召回，最多补回 30 篇；`hash` 模式不会进行语义召回。
+5. DeepSeek 只复核排序靠前的一小批候选，避免把当天全部论文直接交给大模型。
+6. MMR 负责降低日报中相似论文的重复度，历史反馈会影响排序。
 
 这意味着“抓取到论文但日报新增为 0”不一定是话题过严：它也可能表示论文已出现在该日期的日报中并被默认去重。GUI 会分别显示抓取、命中、已推送和新增数量。
 

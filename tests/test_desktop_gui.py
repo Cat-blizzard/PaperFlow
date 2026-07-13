@@ -114,6 +114,9 @@ def test_desktop_paperdaily_workspace_has_subscription_and_catchup_controls() ->
     assert "function startPaperDailyDigest" in script
     assert "function pollPaperDailyTask" in script
     assert "function setPaperDailyRunBusy" in script
+    assert "semantic_recall_active" in script
+    assert "语义召回已启用" in script
+    assert "语义补召" in script
     assert 'const title = paper.title || "Untitled paper";' in script
     assert "function paperDailyTags(paper)" in script
     assert "paperdaily-paper-tags" in script

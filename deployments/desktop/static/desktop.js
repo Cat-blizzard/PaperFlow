@@ -1823,7 +1823,7 @@
         catchup: { has_work: true, last_completed_date: "2026-07-04", missing_start: "2026-07-05", gap_days: 7, recommended_choice: "7d", recommended_window: { start_date: "2026-07-05", end_date: "2026-07-11", days: 7 } },
         state: { last_completed_window_end: "2026-07-04" },
         latest_run: { run_id: "paperdaily_demo_20260712", status: "completed", window_start: "2026-07-05", window_end: "2026-07-11", recommendation_count: 1, summary_count: 1 },
-        providers: { llm: { name: "demo", model: "demo" }, embedding: { name: "demo", model: "demo" } }
+        providers: { llm: { name: "demo", model: "demo" }, embedding: { name: "demo", model: "demo", semantic_recall_enabled: true, semantic_recall_active: true, semantic_recall_threshold: 0.58, semantic_recall_limit: 30 } }
       };
     }
     if (route === "/api/paperdaily/digest") return { ok: true, digest: { run: { run_id: "paperdaily_demo_20260712", status: "completed", window_start: "2026-07-05", window_end: "2026-07-11", recommendation_count: 1, summary_count: 1 }, recommendations: demoPaperDailyDigest(false).recommendations } };
@@ -2220,7 +2220,10 @@
       ? `遗漏 ${catchup.gap_days || 0} 天 · 建议 ${catchup.recommended_choice || "-"}`
       : "没有待处理论文";
     $("pdLlmProvider").textContent = `${llm.name || "-"}:${llm.model || "-"}`;
-    $("pdEmbedProvider").textContent = `Embedding：${embedding.name || "-"}:${embedding.model || "-"}`;
+    const semanticStatus = embedding.semantic_recall_active
+      ? `语义召回已启用 · 阈值 ${Number(embedding.semantic_recall_threshold || 0).toFixed(2)}`
+      : "语义召回未启用";
+    $("pdEmbedProvider").textContent = `Embedding：${embedding.name || "-"}:${embedding.model || "-"} · ${semanticStatus}`;
     $("pdDigestCount").textContent = latest ? `${latest.recommendation_count || 0} 篇` : "暂无日报";
     ["pdAddTopicBtn", "pdLoadLatestBtn", "pdRetrySummariesBtn", "pdDigestRunSelect"].forEach((id) => {
       const button = $(id);
@@ -2296,9 +2299,10 @@
     const handled = Number(stats.handled_count || 0);
     const candidates = Number(stats.candidate_count || 0);
     const matched = Number(stats.matched_count || candidates + handled);
+    const semanticRecalled = Number(stats.semantic_recalled_count || 0);
     const announcementNotice = String(stats.announcement_notice || "").trim();
     const metricText = fetched || matched || handled
-      ? ` · 抓取 ${fetched} · 命中 ${matched} · 已推送 ${handled} · 新增 ${papers.length}`
+      ? ` · 抓取 ${fetched} · 命中 ${matched} · 语义补召 ${semanticRecalled} · 已推送 ${handled} · 新增 ${papers.length}`
       : "";
     $("pdDigestMeta").textContent = papers.length
       ? `${isPreview ? "预估" : "完成"}范围：${run.window_start || digest?.window_start || "-"} 至 ${run.window_end || digest?.window_end || "-"} · ${papers.length} 篇推荐${metricText}`

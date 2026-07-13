@@ -141,7 +141,14 @@ def doctor(
     typer.echo(f"arXiv 分类：{', '.join(PaperDailyService(cfg, store=store).categories)}")
     typer.echo(f"Embedding：{embed.name}:{embed.model}")
     if embed.name == "hash":
-        typer.echo("[警告] hash embedding 不具备语义能力；当前主要依赖话题规则排序。")
+        typer.echo("[警告] hash embedding 不具备语义能力；语义召回未启用，当前依赖话题规则召回。")
+    elif cfg.daily.semantic_recall_enabled:
+        typer.echo(
+            "语义召回：已启用 "
+            f"(threshold={cfg.daily.semantic_recall_threshold:.2f}, limit={cfg.daily.semantic_recall_limit})"
+        )
+    else:
+        typer.echo("语义召回：配置中已关闭")
     typer.echo(f"中文摘要：{llm.name}:{llm.model}")
     if llm.name == "mock":
         typer.echo("[警告] 未配置真实 LLM，日报会显示原始摘要回退。")

@@ -13,6 +13,9 @@ daily:
   llm_rerank_max_tokens: 3000
   llm_rerank_input_cost_per_million_tokens: 0.0
   llm_rerank_output_cost_per_million_tokens: 0.0
+  semantic_recall_enabled: true
+  semantic_recall_threshold: 0.58
+  semantic_recall_limit: 30
   summary_language: zh-CN
   generate_chinese_summary: true
   channels: [terminal, markdown]

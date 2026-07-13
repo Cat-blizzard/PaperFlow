@@ -280,6 +280,14 @@ def test_completed_run_records_recall_and_duplicate_counts(tmp_path: Path) -> No
     assert run is not None
     assert run["metadata"]["run_summary"] == {
         "matched_count": 1,
+        "rule_matched_count": 1,
+        "semantic_recalled_count": 0,
+        "semantic_enabled": False,
+        "semantic_recall_threshold": 0.58,
+        "embedding_provider": "hash",
+        "embedding_model": "unit-test",
+        "embedding_cache_hits": 0,
+        "embedding_call_count": 0,
         "handled_count": 1,
         "candidate_count": 0,
         "new_recommendation_count": 0,

@@ -79,11 +79,15 @@ def test_desktop_adapter_hides_empty_runs_and_defaults_to_populated_digest(tmp_p
 
     digest = gui.latest_digest(user_id="alice")["digest"]
     runs = gui.list_digests(user_id="alice")["runs"]
+    status = gui.status(user_id="alice")
 
     assert digest is not None
     assert digest["run"]["run_id"] == populated_run_id
     assert len(digest["recommendations"]) == 1
     assert [run["run_id"] for run in runs] == [populated_run_id]
+    assert status["providers"]["embedding"]["semantic_recall_enabled"] is True
+    assert status["providers"]["embedding"]["semantic_recall_active"] is False
+    assert status["providers"]["embedding"]["semantic_recall_threshold"] == 0.58
 
 
 def test_desktop_adapter_reuses_existing_digest_when_all_matches_are_handled(

@@ -229,6 +229,35 @@ def test_summary_cache_key_is_exact_and_upserts_payload(tmp_path: Path) -> None:
     )
 
 
+def test_embedding_cache_is_isolated_by_content_model_and_dimensions(tmp_path: Path) -> None:
+    store = PaperDailyStore(tmp_path / "paperflow.db")
+    first = store.save_embedding(
+        "paper",
+        "2607.00001",
+        "content-v1",
+        "OPENAI",
+        "bge-m3",
+        3,
+        [0.1, 0.2, 0.3],
+    )
+    updated = store.save_embedding(
+        "paper",
+        "2607.00001",
+        "content-v1",
+        "openai",
+        "bge-m3",
+        3,
+        [0.4, 0.5, 0.6],
+    )
+
+    assert updated["embedding_id"] == first["embedding_id"]
+    assert updated["vector"] == pytest.approx([0.4, 0.5, 0.6])
+    assert store.get_embedding("paper", "2607.00001", "content-v2", "openai", "bge-m3", 3) is None
+    assert store.get_embedding("paper", "2607.00001", "content-v1", "openai", "other", 3) is None
+    with pytest.raises(ValueError, match="dimensions"):
+        store.save_embedding("paper", "bad", "hash", "openai", "bge-m3", 3, [0.1])
+
+
 def test_delivery_is_unique_per_run_and_channel_and_success_is_idempotent(tmp_path: Path) -> None:
     store = PaperDailyStore(tmp_path / "paperflow.db")
     run_id = store.start_run("alice", "2026-07-01", "2026-07-01")

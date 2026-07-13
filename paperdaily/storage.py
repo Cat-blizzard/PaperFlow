@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
@@ -19,7 +20,7 @@ from uuid import UUID, uuid4
 
 from paperdaily.identifiers import canonicalize_arxiv_id, paper_arxiv_identity
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS paperdaily_schema_meta (
@@ -125,6 +126,23 @@ CREATE TABLE IF NOT EXISTS paperdaily_reranks (
 
 CREATE INDEX IF NOT EXISTS idx_paperdaily_reranks_canonical
     ON paperdaily_reranks(canonical_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS paperdaily_embeddings (
+    embedding_id TEXT PRIMARY KEY,
+    document_kind TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    dimensions INTEGER NOT NULL,
+    vector_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (document_kind, document_id, content_hash, provider, model, dimensions)
+);
+
+CREATE INDEX IF NOT EXISTS idx_paperdaily_embeddings_lookup
+    ON paperdaily_embeddings(document_kind, document_id, provider, model, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS paperdaily_deliveries (
     delivery_id TEXT PRIMARY KEY,
@@ -937,6 +955,94 @@ class PaperDailyStore:
     def _rerank_record(row: sqlite3.Row) -> dict[str, Any]:
         record = dict(row)
         record["payload"] = _json_loads(record.pop("payload_json", "{}"), {})
+        return record
+
+    # ------------------------------------------------------------------
+    # Embedding cache
+    # ------------------------------------------------------------------
+
+    def save_embedding(
+        self,
+        document_kind: str,
+        document_id: str,
+        content_hash: str,
+        provider: str,
+        model: str,
+        dimensions: int,
+        vector: Iterable[float],
+    ) -> dict[str, Any]:
+        normalized_vector: list[float] = []
+        for value in vector:
+            if isinstance(value, bool):
+                raise ValueError("embedding vector values must be finite numbers")
+            normalized = float(value)
+            if not math.isfinite(normalized):
+                raise ValueError("embedding vector values must be finite numbers")
+            normalized_vector.append(normalized)
+        normalized_dimensions = int(dimensions)
+        if normalized_dimensions <= 0 or len(normalized_vector) != normalized_dimensions:
+            raise ValueError("embedding dimensions must match the vector length")
+        key = (
+            _required_text(document_kind, "document_kind").lower(),
+            _required_text(document_id, "document_id"),
+            _required_text(content_hash, "content_hash"),
+            _required_text(provider, "provider").lower(),
+            _required_text(model, "model"),
+            normalized_dimensions,
+        )
+        now = _utc_now()
+        with self._transaction() as conn:
+            conn.execute(
+                """
+                INSERT INTO paperdaily_embeddings
+                    (embedding_id, document_kind, document_id, content_hash, provider, model,
+                     dimensions, vector_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(document_kind, document_id, content_hash, provider, model, dimensions)
+                DO UPDATE SET vector_json = excluded.vector_json, updated_at = excluded.updated_at
+                """,
+                (str(uuid4()), *key, _json_dumps(normalized_vector), now, now),
+            )
+        cached = self.get_embedding(*key)
+        if cached is None:  # pragma: no cover - defensive consistency check
+            raise RuntimeError("Embedding cache write could not be read back")
+        return cached
+
+    def get_embedding(
+        self,
+        document_kind: str,
+        document_id: str,
+        content_hash: str,
+        provider: str,
+        model: str,
+        dimensions: int,
+    ) -> dict[str, Any] | None:
+        with self._reader() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM paperdaily_embeddings
+                WHERE document_kind = ? AND document_id = ? AND content_hash = ?
+                  AND provider = ? AND model = ? AND dimensions = ?
+                """,
+                (
+                    str(document_kind).strip().lower(),
+                    str(document_id).strip(),
+                    str(content_hash).strip(),
+                    str(provider).strip().lower(),
+                    str(model).strip(),
+                    int(dimensions),
+                ),
+            ).fetchone()
+        if row is None:
+            return None
+        record = dict(row)
+        vector = _json_loads(record.pop("vector_json", "[]"), [])
+        if not isinstance(vector, list) or len(vector) != int(record["dimensions"]):
+            return None
+        try:
+            record["vector"] = [float(value) for value in vector]
+        except (TypeError, ValueError):
+            return None
         return record
 
     # ------------------------------------------------------------------

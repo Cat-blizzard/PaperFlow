@@ -42,6 +42,9 @@ daily:
   llm_rerank_weight: 0.4
   llm_rerank_input_cost_per_million_tokens: 2.5
   llm_rerank_output_cost_per_million_tokens: 9.0
+  semantic_recall_enabled: true
+  semantic_recall_threshold: 0.63
+  semantic_recall_limit: 24
 catchup:
   auto_catchup_days: 2
   first_run_days: 7
@@ -78,6 +81,9 @@ topics:
     assert config.daily.llm_rerank_weight == 0.4
     assert config.daily.llm_rerank_input_cost_per_million_tokens == 2.5
     assert config.daily.llm_rerank_output_cost_per_million_tokens == 9.0
+    assert config.daily.semantic_recall_enabled is True
+    assert config.daily.semantic_recall_threshold == 0.63
+    assert config.daily.semantic_recall_limit == 24
     assert config.catchup.first_run_days == 7
     assert config.providers.fallback_order == ["codex", "claude"]
     assert config.providers.settings["codex"]["enabled"] is True
@@ -111,6 +117,13 @@ def test_zero_daily_limits_mean_no_cap() -> None:
 
     assert config.daily.default_limit == 0
     assert topic.daily_limit == 0
+
+
+def test_semantic_recall_configuration_is_validated() -> None:
+    with pytest.raises(ConfigError, match="semantic_recall_threshold"):
+        PaperDailyConfig.from_dict({"daily": {"semantic_recall_threshold": 1.1}})
+    with pytest.raises(ConfigError, match="semantic_recall_limit"):
+        PaperDailyConfig.from_dict({"daily": {"semantic_recall_limit": 0}})
 
 
 def test_config_rejects_empty_timezone_and_duplicate_topics() -> None:

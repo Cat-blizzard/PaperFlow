@@ -65,6 +65,8 @@ def _paper_payload(record: dict[str, Any]) -> dict[str, Any]:
         "pdf_url": f"https://arxiv.org/pdf/{canonical}" if canonical else "",
         "matched_topics": list(metadata.get("matched_topics") or []),
         "matched_terms": list(metadata.get("matched_terms") or [])[:16],
+        "semantic_recall": bool(paper.get("semantic_recall")),
+        "semantic_recall_scores": dict(paper.get("semantic_recall_scores") or {}),
         "recommendation_reason": str(metadata.get("recommendation_reason") or ""),
         "summary": {
             "title_zh": str(summary.get("title_zh") or ""),
@@ -252,6 +254,19 @@ class PaperDailyGui:
             }
 
         config, service = self._context(user_id)
+        embedding_provider = build_embedding_provider()
+        embedding_info = self._provider_name(embedding_provider)
+        embedding_info.update(
+            {
+                "semantic_recall_enabled": config.daily.semantic_recall_enabled,
+                "semantic_recall_active": (
+                    config.daily.semantic_recall_enabled
+                    and str(embedding_info["name"]).casefold() != "hash"
+                ),
+                "semantic_recall_threshold": config.daily.semantic_recall_threshold,
+                "semantic_recall_limit": config.daily.semantic_recall_limit,
+            }
+        )
         runs = service.store.list_runs(config.user_id, limit=20)
         latest_completed = next((item for item in runs if item.get("status") == "completed"), None)
         latest_populated = self._latest_populated_run(service, config.user_id)
@@ -271,13 +286,13 @@ class PaperDailyGui:
             "latest_processed_run": self._run_payload(latest_completed) if latest_completed else None,
             "providers": {
                 "llm": self._provider_name(build_llm_provider()),
-                "embedding": self._provider_name(build_embedding_provider()),
+                "embedding": embedding_info,
             },
             "active_digest_task": self._active_task(f"paperdaily-digest:{config.user_id}"),
         }
 
     @staticmethod
-    def _provider_name(provider: Any) -> dict[str, str]:
+    def _provider_name(provider: Any) -> dict[str, Any]:
         return {
             "name": str(getattr(provider, "name", "unknown")),
             "model": str(getattr(provider, "model", "unknown")),
@@ -301,6 +316,14 @@ class PaperDailyGui:
             "recommendation_count": int(run.get("recommendation_count") or 0),
             "summary_count": int(run.get("summary_count") or 0),
             "matched_count": int(run_summary.get("matched_count") or 0),
+            "rule_matched_count": int(run_summary.get("rule_matched_count") or 0),
+            "semantic_recalled_count": int(run_summary.get("semantic_recalled_count") or 0),
+            "semantic_enabled": bool(run_summary.get("semantic_enabled")),
+            "semantic_recall_threshold": float(run_summary.get("semantic_recall_threshold") or 0.0),
+            "embedding_provider": str(run_summary.get("embedding_provider") or ""),
+            "embedding_model": str(run_summary.get("embedding_model") or ""),
+            "embedding_cache_hits": int(run_summary.get("embedding_cache_hits") or 0),
+            "embedding_call_count": int(run_summary.get("embedding_call_count") or 0),
             "handled_count": int(run_summary.get("handled_count") or 0),
             "new_recommendation_count": int(
                 run_summary.get("new_recommendation_count", run.get("recommendation_count") or 0)
