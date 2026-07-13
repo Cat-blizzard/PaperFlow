@@ -19,6 +19,10 @@ daily:
   arxiv_max_results: 5000
   arxiv_request_delay_seconds: 3
   arxiv_cache_ttl_hours: 24
+  arxiv_rss_enabled: true
+  arxiv_rss_include_cross_list: true
+  arxiv_rss_cache_ttl_minutes: 15
+  arxiv_api_id_batch_size: 20
   mmr_lambda: 0.75
 catchup:
   interactive: true

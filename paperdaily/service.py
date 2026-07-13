@@ -7,15 +7,16 @@ import os
 from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from paperflow.providers import build_embedding_provider
 
-from .catchup import CatchupPlan, CatchupPlanner, DateWindow, default_target_date
+from .catchup import CatchupPlan, CatchupPlanner, DateWindow, default_target_date, local_today
 from .channels import FeishuChannel, MarkdownChannel, TerminalChannel
 from .collector import ArxivCollector, ArxivCollectorError, ArxivFetchResult
 from .config import PaperDailyConfig
+from .identifiers import deduplicate_papers
 from .models import DeliveryResult, Digest, Recommendation
 from .ranking import PaperRanker
 from .reranker import LLMReranker
@@ -54,6 +55,8 @@ class PaperDailyService:
             request_delay_seconds=config.daily.arxiv_request_delay_seconds,
             cache_dir=cache_dir,
             cache_ttl_hours=config.daily.arxiv_cache_ttl_hours,
+            rss_cache_ttl_minutes=config.daily.arxiv_rss_cache_ttl_minutes,
+            api_id_batch_size=config.daily.arxiv_api_id_batch_size,
         )
         self.summary_provider = summary_provider
         self.rerank_provider = rerank_provider if rerank_provider is not None else summary_provider
@@ -209,6 +212,44 @@ class PaperDailyService:
         recommendations = ranker.select(candidates, limit=limit)
         return recommendations, {**ranker.last_diagnostics, **rerank_stats}
 
+    def _collect_window(self, window: DateWindow) -> ArxivFetchResult:
+        """Use live RSS announcements for today and API date windows for history."""
+
+        assert window.start_date is not None
+        announcement_day = local_today(self.config.timezone)
+        if not self.config.daily.arxiv_rss_enabled or window.end_date != announcement_day:
+            return self.collector.fetch_window(window.start_date, window.end_date, self.categories)
+
+        if window.start_date == announcement_day:
+            return self.collector.fetch_announcements(
+                announcement_day,
+                self.categories,
+                timezone_name=self.config.timezone,
+                include_cross_list=self.config.daily.arxiv_rss_include_cross_list,
+            )
+
+        historical = self.collector.fetch_window(
+            window.start_date,
+            announcement_day - timedelta(days=1),
+            self.categories,
+        )
+        announcements = self.collector.fetch_announcements(
+            announcement_day,
+            self.categories,
+            timezone_name=self.config.timezone,
+            include_cross_list=self.config.daily.arxiv_rss_include_cross_list,
+        )
+        return ArxivFetchResult(
+            papers=deduplicate_papers([*historical.papers, *announcements.papers]),
+            window_start=window.start_date,
+            window_end=window.end_date,
+            total_available=historical.total_available + announcements.total_available,
+            network_requests=historical.network_requests + announcements.network_requests,
+            cache_hits=historical.cache_hits + announcements.cache_hits,
+            truncated=historical.truncated or announcements.truncated,
+            source=f"{historical.source}+{announcements.source}",
+        )
+
     @staticmethod
     def _store_recommendations(recommendations: Iterable[Recommendation]) -> list[dict[str, Any]]:
         return [
@@ -297,7 +338,7 @@ class PaperDailyService:
             )
 
         try:
-            fetched = self.collector.fetch_window(window.start_date, window.end_date, self.categories)
+            fetched = self._collect_window(window)
             # A capped Atom query is not a complete date window.  Completing
             # the run in that state would advance the watermark past papers
             # that were never considered, making the loss permanent on the
@@ -322,6 +363,7 @@ class PaperDailyService:
                 "arxiv_total_available": fetched.total_available,
                 "network_requests": fetched.network_requests,
                 "cache_hits": fetched.cache_hits,
+                "arxiv_source": fetched.source,
                 **ranking_stats,
             }
             digest = Digest(

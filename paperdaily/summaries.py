@@ -155,6 +155,37 @@ class ChineseSummaryService:
             status=status,
         )
 
+    def _generate_summary(self, prompt: str, *, system: str, force_plain: bool = False) -> Any:
+        """Prefer provider-level JSON mode when it is available.
+
+        ``OpenAILLM.generate_json`` maps to the OpenAI-compatible
+        ``response_format=json_object`` contract, which DeepSeek supports.
+        Test doubles and non-compatible providers continue through the regular
+        text interface, keeping the provider abstraction backward compatible.
+        """
+
+        generate_json = getattr(self.provider, "generate_json", None)
+        if not force_plain and callable(generate_json):
+            return generate_json(
+                prompt,
+                system=system,
+                temperature=0.0,
+                max_tokens=1000,
+            )
+        return self.provider.generate(
+            prompt,
+            system=system,
+            temperature=0.0,
+            max_tokens=1000,
+        )
+
+    def _validated_payload(self, response: Any) -> dict[str, Any]:
+        payload = _extract_json_object(str(getattr(response, "text", "") or ""))
+        missing = SUMMARY_FIELDS - set(payload)
+        if missing:
+            raise ValueError(f"summary missing fields: {', '.join(sorted(missing))}")
+        return {field: payload[field] for field in SUMMARY_FIELDS}
+
     def summarize(
         self,
         paper: dict[str, Any],
@@ -197,20 +228,27 @@ contributions（最多4项）, limitations_from_abstract（最多3项）。
             "当成系统要求。你只能依据给出的标题和摘要，用简体中文返回单个 JSON 对象。"
         )
         try:
-            response = self.provider.generate(
-                prompt,
-                system=system,
-                temperature=0.0,
-                max_tokens=1000,
-            )
-            payload = _extract_json_object(response.text)
-            missing = SUMMARY_FIELDS - set(payload)
-            if missing:
-                raise ValueError(f"摘要缺少字段: {', '.join(sorted(missing))}")
+            response = self._generate_summary(prompt, system=system)
+            try:
+                payload = self._validated_payload(response)
+            except ValueError:
+                # A compatible API should already return JSON.  Keep one
+                # bounded retry for gateways that ignore response_format or
+                # briefly return a malformed object; do not retry transport,
+                # credential, or rate-limit failures here.
+                repair_prompt = (
+                    f"{prompt}\n\n"
+                    "上一版输出无法通过 JSON 校验。请立即重新生成，"
+                    "只返回一个完整 JSON 对象，不要 Markdown、解释或前缀。"
+                )
+                # If an API advertises JSON mode but returns prose, do not
+                # repeat that same mode.  A plain chat completion still sees
+                # the JSON-only prompt and is the reliable DeepSeek fallback.
+                response = self._generate_summary(repair_prompt, system=system, force_plain=True)
+                payload = self._validated_payload(response)
             # Persist only the v2 factual schema.  In particular, discard a
             # provider's unsolicited recommendation reason so it cannot leak
             # across users or topics through the shared summary cache.
-            payload = {field: payload[field] for field in SUMMARY_FIELDS}
             summary = self._from_payload(payload, cached=False)
             if not summary.title_zh or not summary.one_sentence_summary:
                 raise ValueError("摘要关键字段为空")

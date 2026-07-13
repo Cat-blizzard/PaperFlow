@@ -225,50 +225,10 @@ publish month when available, falling back to the current month. Monthly report
 and Topic Index files are not placed in an extra month folder because their
 filenames already include `YYYY-MM`.
 
-To export an Obsidian-friendly monthly reading summary and topic index for the
-current calendar month, run:
-
-```bash
-paperflow wiki monthly --user-id user_alice
-```
-
-This writes role-scoped files such as
-`role1/monthly_reports/PaperFlow Monthly Report - role1 - 2026-05.md` and
-`role1/topic_index/Topic Index - role1 - 2026-05.md`, with the `YYYY-MM`
-portion chosen from the export month. Pass `--month YYYY-MM` only when you
-intentionally want to regenerate a historical month. You can override the
-configured upper-level directories for one run:
-
-```bash
-paperflow wiki monthly \
-  --user-id user_alice \
-  --month 2026-05 \
-  --output-dir "/Users/mario/Documents/Obsidian Vault/Daily Note/Daily Note 2026" \
-  --topic-index-dir "/Users/mario/Documents/Obsidian Vault/Daily Note/Daily Note 2026"
-```
-
 The GUI uses the same variables. In the GUI, the arXiv/PDF fields are input
 addresses; generated Markdown reports still go to
 `PAPERFLOW_READING_REPORTS_DIR`. See
 [../deployments/desktop/README.md](../deployments/desktop/README.md).
-
-## Local PaperFlow Wiki
-
-The wiki is a local memory layer over `data/paperflow.db`. It stores paper,
-section, topic, and trajectory nodes, then mirrors them to Markdown files so
-they can be inspected with normal editors or Obsidian.
-
-```bash
-paperflow wiki init
-paperflow wiki backfill --user-id user_alice
-paperflow wiki topics --user-id user_alice
-paperflow wiki embed --user-id user_alice
-paperflow wiki search "graph rag" --user-id user_alice
-paperflow wiki ask "What have I read about graph RAG?" --user-id user_alice
-```
-
-Set `PAPERFLOW_WIKI_INGEST=false` to turn off automatic ingestion while
-keeping the rest of the PaperFlow pipeline unchanged.
 
 ## Interest-drift defaults
 

@@ -178,24 +178,12 @@ paperflow gui
 The GUI lets you create or select a profile, run/load a daily push, multi-select
 papers for reading, mark explicit "not interested" feedback, generate local
 Markdown reports, manage must-read anchors, read an arXiv ID or local PDF
-directly, manage local research roles, filter feedback history, and search the
-local Wiki.
+directly, manage local research roles, and filter feedback history.
 
 Feedback has the same profile-learning effect across surfaces. A CLI command
 such as `paperflow feedback --reply "1 3"`, a GUI selection, and a Feishu/Lark
 reply with `1 3` all update the matching user's profile and drift state. See
 [feedback-loop.md](feedback-loop.md).
-
-Daily pushes, generated reading reports, explicit feedback, and profile-drift
-snapshots are also written into the local PaperFlow Wiki:
-
-```bash
-paperflow wiki backfill --user-id user_alice
-paperflow wiki topics --user-id user_alice
-paperflow wiki stats --user-id user_alice
-paperflow wiki search "literature mining" --user-id user_alice
-paperflow wiki ask "What have I read about literature mining?" --user-id user_alice
-```
 
 To save PDFs, reading-report Markdown, monthly reports, and Topic Index files
 directly into an Obsidian vault, point all four export variables at the same
@@ -221,15 +209,6 @@ back to the raw `user_id`.
 Set `PAPERFLOW_STORAGE_ROLE_SUBDIR=false` or
 `PAPERFLOW_STORAGE_CATEGORY_SUBDIR=false` only if you intentionally want a
 flatter layout.
-
-Generate the Obsidian monthly summary and Topic Index from local wiki data:
-
-```bash
-paperflow wiki monthly --user-id user_alice
-```
-
-Without `--month`, PaperFlow exports the current calendar month. Pass
-`--month 2026-05` only to regenerate a historical month.
 
 For the local GUI, keep `PAPERFLOW_WRITE_FEISHU=false` unless you explicitly
 want reading reports to also create Feishu docs.

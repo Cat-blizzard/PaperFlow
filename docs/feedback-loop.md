@@ -87,21 +87,3 @@ can reinforce the detected paper topics through the reading-signal state.
 
 This helps the system learn from "I actually read this" without treating every
 deep read as a hard preference shift.
-
-## Local Wiki
-
-When `PAPERFLOW_WIKI_INGEST=true`, feedback and drift updates are mirrored into
-the local wiki:
-
-- paper nodes record selected/skipped/read behavior
-- trajectory nodes record push and drift transitions
-- topic nodes connect repeated themes
-
-Run:
-
-```bash
-paperflow wiki backfill --user-id user_alice
-paperflow wiki stats --user-id user_alice
-```
-
-to import older runtime history and inspect the stored signal counts.

@@ -248,16 +248,35 @@ def _api_must_read(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[
     return agents.list_must_read(_required_user(query_params))
 
 
-def _api_paperdaily_status(_query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
-    return paperdaily_gui.status()
+def _paperdaily_user(query_params: Dict[str, Any], body: Dict[str, Any] | None = None) -> str | None:
+    value = (body or {}).get("user_id") if body else None
+    return str(value or query_params.get("user_id") or "").strip() or None
+
+
+def _api_paperdaily_users(_query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
+    return paperdaily_gui.list_users()
+
+
+def _api_paperdaily_create_user(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
+    return paperdaily_gui.create_user(str(body.get("user_id") or ""))
+
+
+def _api_paperdaily_status(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
+    return paperdaily_gui.status(_paperdaily_user(query_params))
 
 
 def _api_paperdaily_digest(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
-    return paperdaily_gui.latest_digest(str(query_params.get("run_id") or "").strip() or None)
+    return paperdaily_gui.latest_digest(
+        str(query_params.get("run_id") or "").strip() or None,
+        user_id=_paperdaily_user(query_params),
+    )
 
 
 def _api_paperdaily_digests(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
-    return paperdaily_gui.list_digests(limit=int(query_params.get("limit") or 30))
+    return paperdaily_gui.list_digests(
+        limit=int(query_params.get("limit") or 30),
+        user_id=_paperdaily_user(query_params),
+    )
 
 
 def _api_paperdaily_task(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
@@ -271,7 +290,10 @@ def _api_paperdaily_task(query_params: Dict[str, Any], _body: Dict[str, Any]) ->
 
 
 def _api_paperdaily_note(query_params: Dict[str, Any], _body: Dict[str, Any]) -> Dict[str, Any]:
-    return paperdaily_gui.read_note(str(query_params.get("arxiv_id") or "").strip())
+    return paperdaily_gui.read_note(
+        str(query_params.get("arxiv_id") or "").strip(),
+        user_id=_paperdaily_user(query_params),
+    )
 
 
 def _api_create_profile(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
@@ -481,7 +503,11 @@ def _api_must_read_update(_query_params: Dict[str, Any], body: Dict[str, Any]) -
 
 
 def _api_paperdaily_topics(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
-    return paperdaily_gui.update_topic(str(body.get("action") or "save"), body)
+    return paperdaily_gui.update_topic(
+        str(body.get("action") or "save"),
+        body,
+        user_id=_paperdaily_user({}, body),
+    )
 
 
 def _api_paperdaily_run(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
@@ -489,6 +515,7 @@ def _api_paperdaily_run(_query_params: Dict[str, Any], body: Dict[str, Any]) -> 
     limit = _optional_positive_int(raw_limit) if raw_limit not in (None, "") else None
     return {
         "task": paperdaily_gui.start_digest_task(
+            user_id=_paperdaily_user({}, body),
             choice=str(body.get("choice") or "recommended"),
             dry_run=bool(body.get("dry_run")),
             limit=limit,
@@ -502,6 +529,7 @@ def _api_paperdaily_feedback(_query_params: Dict[str, Any], body: Dict[str, Any]
     return paperdaily_gui.record_feedback(
         str(body.get("arxiv_id") or "").strip(),
         str(body.get("action") or "").strip(),
+        user_id=_paperdaily_user({}, body),
     )
 
 
@@ -509,7 +537,17 @@ def _api_paperdaily_read(_query_params: Dict[str, Any], body: Dict[str, Any]) ->
     return {
         "task": paperdaily_gui.start_codex_read(
             str(body.get("arxiv_id") or "").strip(),
+            user_id=_paperdaily_user({}, body),
             force_parse=bool(body.get("force_parse")),
+        )
+    }
+
+
+def _api_paperdaily_retry_summaries(_query_params: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "task": paperdaily_gui.start_summary_retry(
+            str(body.get("run_id") or "").strip(),
+            user_id=_paperdaily_user({}, body),
         )
     }
 
@@ -536,6 +574,7 @@ GET_ROUTES: Dict[str, ApiHandler] = {
     "/api/read/status": _api_read_status,
     "/api/must-read": _api_must_read,
     "/api/paperdaily/status": _api_paperdaily_status,
+    "/api/paperdaily/users": _api_paperdaily_users,
     "/api/paperdaily/digest": _api_paperdaily_digest,
     "/api/paperdaily/digests": _api_paperdaily_digests,
     "/api/paperdaily/task": _api_paperdaily_task,
@@ -567,9 +606,11 @@ POST_ROUTES: Dict[str, ApiHandler] = {
     "/api/export": _api_export,
     "/api/must-read": _api_must_read_update,
     "/api/paperdaily/topics": _api_paperdaily_topics,
+    "/api/paperdaily/users": _api_paperdaily_create_user,
     "/api/paperdaily/run": _api_paperdaily_run,
     "/api/paperdaily/feedback": _api_paperdaily_feedback,
     "/api/paperdaily/read": _api_paperdaily_read,
+    "/api/paperdaily/retry-summaries": _api_paperdaily_retry_summaries,
 }
 
 

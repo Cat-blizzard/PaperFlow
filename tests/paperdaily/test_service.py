@@ -57,6 +57,34 @@ class _TruncatedCollector(_Collector):
         )
 
 
+class _AnnouncementCollector(_Collector):
+    def __init__(self, papers: list[dict[str, Any]]) -> None:
+        super().__init__(papers)
+        self.announcement_calls: list[tuple[date, list[str], str, bool]] = []
+
+    def fetch_announcements(
+        self,
+        target_date: date,
+        categories: list[str],
+        *,
+        timezone_name: str,
+        include_cross_list: bool,
+    ) -> ArxivFetchResult:
+        self.announcement_calls.append(
+            (target_date, list(categories), timezone_name, include_cross_list)
+        )
+        return ArxivFetchResult(
+            papers=list(self.papers),
+            window_start=target_date,
+            window_end=target_date,
+            total_available=len(self.papers),
+            network_requests=1,
+            cache_hits=0,
+            truncated=False,
+            source="rss_announcements",
+        )
+
+
 def _config(tmp_path: Path, *, channels: list[str] | None = None) -> PaperDailyConfig:
     return PaperDailyConfig(
         user_id="alice",
@@ -145,6 +173,35 @@ def test_dry_run_does_not_write_run_watermark_summary_delivery_or_output(tmp_pat
     assert not (config.output_dir / "digests").exists()
     assert outcome.digest.stats["llm_rerank_call_count"] == 0
     assert outcome.digest.stats["llm_rerank_status"] == "skipped_dry_run"
+
+
+def test_live_announcement_day_uses_rss_before_api_date_query(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config(tmp_path, channels=["markdown"])
+    collector = _AnnouncementCollector([_paper()])
+    service = PaperDailyService(
+        config,
+        store=PaperDailyStore(config.database),
+        collector=collector,
+        embedding_provider=_HashEmbedding(),
+    )
+    announcement_day = date(2026, 7, 13)
+    monkeypatch.setattr("paperdaily.service.local_today", lambda _timezone: announcement_day)
+
+    outcome = service.run(
+        DateWindow(announcement_day, announcement_day, "latest"),
+        generate_summary=False,
+        channels=["markdown"],
+    )
+
+    assert collector.calls == []
+    assert collector.announcement_calls == [
+        (announcement_day, ["cs.RO"], "UTC", True)
+    ]
+    assert outcome.digest.stats["arxiv_source"] == "rss_announcements"
+    assert service.store.get_state("alice")["last_completed_window_end"] == "2026-07-13"
 
 
 def test_markdown_success_completes_run_when_optional_feishu_fails(

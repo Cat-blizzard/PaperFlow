@@ -64,13 +64,13 @@ def test_gui_status_and_topic_changes_use_paperdaily_config(tmp_path: Path) -> N
     assert created["topic"]["id"] == "world-model"
 
     gui.set_topic_enabled("world-model", False)
-    persisted = load_config(config_path)
+    persisted = load_config(gui._user_config_path("gui_user"))  # noqa: SLF001 - user workspace persistence
     topic = next(item for item in persisted.topics if item.id == "world-model")
     assert topic.enabled is False
 
     deleted = gui.delete_topic("world-model")
     assert deleted["deleted"] == "world-model"
-    assert [item.id for item in load_config(config_path).topics] == ["embodied-vla"]
+    assert [item.id for item in load_config(gui._user_config_path("gui_user")).topics] == ["embodied-vla"]
 
 
 def test_gui_reports_missing_configuration_without_creating_files(tmp_path: Path) -> None:
@@ -154,7 +154,7 @@ def test_gui_preview_task_is_background_and_returns_compact_digest(tmp_path: Pat
             )
             return RunOutcome(digest=digest, dry_run=True)
 
-    monkeypatch.setattr(gui, "_context", lambda: (config, FakeService()))
+    monkeypatch.setattr(gui, "_context", lambda _user_id=None: (config, FakeService()))
     started = gui.start_digest_task(choice="recommended", dry_run=True, limit=12)
 
     task = gui.task(started["task_id"])
@@ -169,3 +169,24 @@ def test_gui_preview_task_is_background_and_returns_compact_digest(tmp_path: Pat
     assert task["result"]["dry_run"] is True
     assert task["result"]["recommendations"][0]["arxiv_id"] == "2607.00001"
     assert task["result"]["recommendations"][0]["url"] == "https://arxiv.org/abs/2607.00001"
+
+
+def test_gui_users_keep_topics_and_output_areas_separate(tmp_path: Path) -> None:
+    config_path = tmp_path / "paperdaily.yaml"
+    _config(config_path)
+    gui = PaperDailyGui(config_path)
+
+    created = gui.create_user("alice")
+    assert {item["user_id"] for item in created["users"]} == {"gui_user", "alice"}
+
+    topic = gui.save_topic({"quick": True, "name": "", "keywords": "VLA, WAM"}, user_id="alice")
+    alice_config = load_config(gui._user_config_path("alice"))  # noqa: SLF001 - user workspace persistence
+    original_config = load_config(gui._user_config_path("gui_user"))  # noqa: SLF001
+
+    assert topic["topic"]["name"] == "VLA / WAM"
+    assert topic["topic"]["arxiv_categories"] == ["cs.RO", "cs.AI", "cs.CV", "cs.LG", "cs.CL"]
+    assert "robot" in topic["topic"]["context_keywords"]
+    assert "wireless access management" in topic["topic"]["negative_keywords"]
+    assert [item.id for item in original_config.topics] == ["embodied-vla"]
+    assert len(alice_config.topics) == 1
+    assert alice_config.output_dir != original_config.output_dir

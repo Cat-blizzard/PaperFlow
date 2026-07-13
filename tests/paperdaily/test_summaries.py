@@ -173,4 +173,50 @@ def test_malformed_summary_returns_honest_failure_and_caches_no_success(tmp_path
     assert first.contributions == []
     assert first.limitations_from_abstract
     assert second.status == "failed"
-    assert len(provider.calls) == 2
+    # Each malformed response gets one format-only retry; failed entries are
+    # deliberately not accepted from cache, so the next call retries again.
+    assert len(provider.calls) == 4
+
+
+def test_summary_prefers_provider_json_mode_when_available(tmp_path: Path) -> None:
+    class JsonProvider(_Provider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.json_calls = 0
+
+        def generate_json(self, prompt: str, **kwargs: Any) -> Any:
+            self.json_calls += 1
+            return super().generate(prompt, **kwargs)
+
+    provider = JsonProvider()
+    summary = ChineseSummaryService(store=PaperDailyStore(tmp_path / "paperflow.db"), provider=provider).summarize(
+        {"arxiv_id": "2607.00004", "title": "A paper", "abstract": "An abstract"}
+    )
+
+    assert summary.status == "completed"
+    assert provider.json_calls == 1
+
+
+def test_malformed_json_mode_retries_with_plain_generation(tmp_path: Path) -> None:
+    class JsonThenPlainProvider(_Provider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.json_calls = 0
+            self.plain_calls = 0
+
+        def generate_json(self, prompt: str, **kwargs: Any) -> Any:
+            self.json_calls += 1
+            return SimpleNamespace(text="JSON mode ignored")
+
+        def generate(self, prompt: str, **kwargs: Any) -> Any:
+            self.plain_calls += 1
+            return super().generate(prompt, **kwargs)
+
+    provider = JsonThenPlainProvider()
+    summary = ChineseSummaryService(store=PaperDailyStore(tmp_path / "paperflow.db"), provider=provider).summarize(
+        {"arxiv_id": "2607.00005", "title": "A paper", "abstract": "An abstract"}
+    )
+
+    assert summary.status == "completed"
+    assert provider.json_calls == 1
+    assert provider.plain_calls == 1

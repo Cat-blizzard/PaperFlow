@@ -2121,7 +2121,6 @@
     }
     window.scrollTo({ top: 0, left: 0 });
     if (name === "reports" && !options.skipLoad) runAction(() => refreshReports({ keepSelection: true }), "加载报告");
-    if (name === "wiki" && !options.skipLoad) runAction(loadWiki, "加载 Wiki");
     if (name === "chat" && !options.skipLoad) runAction(() => loadChatSessions({ openLatest: true }), "加载历史对话");
     if (name === "settings") runAction(loadSettings, "加载设置");
     if (name === "paperdaily" && !options.skipLoad) runAction(() => loadPaperDaily({ loadDigest: true }), "加载 PaperDaily");
@@ -2137,6 +2136,11 @@
       .split(/[\n,]/)
       .map((item) => item.trim())
       .filter(Boolean);
+  }
+
+  function paperdailyQuery(values = {}) {
+    const params = new URLSearchParams({ user_id: currentUser(), ...values });
+    return params.toString();
   }
 
   function paperdailyTopicById(topicId) {
@@ -2205,7 +2209,7 @@
     $("pdEmbedProvider").textContent = `Embedding：${embedding.name || "-"}:${embedding.model || "-"}`;
     $("pdCodexProvider").textContent = codex.ready ? "已就绪" : "未就绪";
     $("pdDigestCount").textContent = latest ? `最近日报 ${latest.recommendation_count || 0} 篇` : "暂无日报";
-    ["pdAddTopicBtn", "pdPreviewBtn", "pdRunBtn", "pdLoadLatestBtn", "pdDigestRunSelect"].forEach((id) => {
+    ["pdAddTopicBtn", "pdPreviewBtn", "pdRunBtn", "pdLoadLatestBtn", "pdRetrySummariesBtn", "pdDigestRunSelect"].forEach((id) => {
       const button = $(id);
       if (button) button.disabled = !configured;
     });
@@ -2252,6 +2256,10 @@
     const run = digest?.run || digest || {};
     const papers = Array.isArray(digest?.recommendations) ? digest.recommendations : [];
     const isPreview = Boolean(options.preview || digest?.dry_run);
+    const retryButton = $("pdRetrySummariesBtn");
+    if (retryButton) {
+      retryButton.disabled = isPreview || !papers.some((paper) => paper?.summary?.status && paper.summary.status !== "completed");
+    }
     $("pdDigestMeta").textContent = papers.length
       ? `${isPreview ? "预估" : "完成"}范围：${run.window_start || digest?.window_start || "-"} 至 ${run.window_end || digest?.window_end || "-"} · ${papers.length} 篇推荐`
       : "暂无完成的日报。先预估或生成一次检索结果。";
@@ -2292,7 +2300,7 @@
   }
 
   async function loadPaperDailyDigest(runId = "") {
-    const query = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
+    const query = `?${paperdailyQuery(runId ? { run_id: runId } : {})}`;
     const data = await api(`/api/paperdaily/digest${query}`);
     renderPaperDailyDigest(data.digest);
     if (data.digest?.run?.run_id && $("pdDigestRunSelect")) {
@@ -2302,13 +2310,13 @@
   }
 
   async function loadPaperDailyRuns(selectedRunId = "") {
-    const data = await api("/api/paperdaily/digests?limit=30");
+    const data = await api(`/api/paperdaily/digests?${paperdailyQuery({ limit: 30 })}`);
     renderPaperDailyRuns(data.runs || [], selectedRunId);
     return data.runs || [];
   }
 
   async function loadPaperDaily(options = {}) {
-    const data = await api("/api/paperdaily/status");
+    const data = await api(`/api/paperdaily/status?${paperdailyQuery()}`);
     renderPaperDailyStatus(data);
     if (data.configured && options.loadDigest !== false) {
       const runs = await loadPaperDailyRuns();
@@ -2327,6 +2335,7 @@
     const data = await api("/api/paperdaily/run", {
       method: "POST",
       body: JSON.stringify({
+        user_id: currentUser(),
         choice,
         dry_run: dryRun,
         limit: Number($("pdLimit").value || 12),
@@ -2343,9 +2352,22 @@
   async function startPaperDailyCodexRead(arxivId) {
     const data = await api("/api/paperdaily/read", {
       method: "POST",
-      body: JSON.stringify({ arxiv_id: arxivId })
+      body: JSON.stringify({ user_id: currentUser(), arxiv_id: arxivId })
     });
     setPaperDailyTaskStatus(`Codex 正在精读 ${arxivId}，完成后会写入本地阅读笔记。`, "running");
+    pollPaperDailyTask(data.task.task_id).catch((error) => {
+      setPaperDailyTaskStatus(error.message || String(error), "error");
+    });
+  }
+
+  async function retryPaperDailySummaries() {
+    const runId = $("pdDigestRunSelect")?.value || state.paperdailyDigest?.run?.run_id || "";
+    if (!runId) throw new Error("请先加载一份日报");
+    const data = await api("/api/paperdaily/retry-summaries", {
+      method: "POST",
+      body: JSON.stringify({ user_id: currentUser(), run_id: runId })
+    });
+    setPaperDailyTaskStatus("正在重试当前日报中失败的中文摘要…", "running");
     pollPaperDailyTask(data.task.task_id).catch((error) => {
       setPaperDailyTaskStatus(error.message || String(error), "error");
     });
@@ -2355,7 +2377,7 @@
     const token = ++state.paperdailyPollToken;
     state.paperdailyTaskId = taskId;
     while (token === state.paperdailyPollToken) {
-      const data = await api(`/api/paperdaily/task?task_id=${encodeURIComponent(taskId)}`);
+      const data = await api(`/api/paperdaily/task?${paperdailyQuery({ task_id: taskId })}`);
       const task = data.task || {};
       if (task.status === "running") {
         await new Promise((resolve) => window.setTimeout(resolve, 1200));
@@ -2374,6 +2396,9 @@
       } else if (task.kind === "codex_read") {
         await loadPaperDailyNote(task.result?.arxiv_id || "");
         setPaperDailyTaskStatus(`Codex 精读完成：${task.result?.arxiv_id || "论文"}。`);
+      } else if (task.kind === "summary_retry") {
+        await loadPaperDaily({ loadDigest: true });
+        setPaperDailyTaskStatus(`中文摘要重试完成：${task.result?.completed || 0}/${task.result?.total || 0} 篇成功。`);
       }
       return task;
     }
@@ -2382,14 +2407,14 @@
   async function recordPaperDailyFeedback(arxivId, action) {
     await api("/api/paperdaily/feedback", {
       method: "POST",
-      body: JSON.stringify({ arxiv_id: arxivId, action })
+      body: JSON.stringify({ user_id: currentUser(), arxiv_id: arxivId, action })
     });
     setPaperDailyTaskStatus(`已记录 ${arxivId} 的反馈：${action}。`);
     showFeedbackToast("success", "反馈已记录", "这会影响后续 PaperDaily 推荐。 ");
   }
 
   async function loadPaperDailyNote(arxivId) {
-    const data = await api(`/api/paperdaily/note?arxiv_id=${encodeURIComponent(arxivId)}`);
+    const data = await api(`/api/paperdaily/note?${paperdailyQuery({ arxiv_id: arxivId })}`);
     if (!data.note) {
       throw new Error("未找到已生成的阅读笔记。 ");
     }
@@ -2418,6 +2443,8 @@
     $("pdTopicMinimumScore").value = topic?.minimum_score ?? 0.25;
     $("pdTopicEnabled").checked = topic?.enabled ?? true;
     $("pdTopicDeleteBtn").hidden = !editing;
+    const advanced = document.querySelector(".paperdaily-topic-advanced");
+    if (advanced) advanced.open = editing;
     dialog.showModal();
   }
 
@@ -2431,6 +2458,7 @@
       id: $("pdTopicId").value.trim(),
       name: $("pdTopicName").value.trim(),
       description: $("pdTopicDescription").value.trim(),
+      quick: true,
       enabled: $("pdTopicEnabled").checked,
       arxiv_categories: paperdailyList($("pdTopicCategories").value),
       exact_phrases: paperdailyList($("pdTopicPhrases").value),
@@ -2447,7 +2475,7 @@
     if (!form.reportValidity()) return;
     const data = await api("/api/paperdaily/topics", {
       method: "POST",
-      body: JSON.stringify({ action: "save", topic: paperDailyTopicFormPayload() })
+      body: JSON.stringify({ user_id: currentUser(), action: "save", topic: paperDailyTopicFormPayload() })
     });
     closePaperDailyTopic();
     await loadPaperDaily({ loadDigest: false });
@@ -2459,7 +2487,7 @@
     if (!topicId || !window.confirm("删除该研究话题？历史日报和反馈会保留。")) return;
     await api("/api/paperdaily/topics", {
       method: "POST",
-      body: JSON.stringify({ action: "delete", topic_id: topicId })
+      body: JSON.stringify({ user_id: currentUser(), action: "delete", topic_id: topicId })
     });
     closePaperDailyTopic();
     await loadPaperDaily({ loadDigest: false });
@@ -2490,14 +2518,40 @@
   }
 
   async function loadUsers() {
-    const data = await api("/api/users");
-    state.users = data.users && data.users.length ? data.users.map(normalizeUser) : [normalizeUser("user_demo")];
+    const data = await api("/api/paperdaily/users");
+    state.users = data.users && data.users.length ? data.users.map(normalizeUser) : [];
+    if (!state.users.length) return;
     const ids = state.users.map((user) => user.user_id);
-    const current = state.users.find((user) => user.is_current) || state.users[0];
+    const remembered = window.localStorage.getItem("paperdaily.user_id");
+    const current = state.users.find((user) => user.user_id === remembered)
+      || state.users.find((user) => user.user_id === data.default_user_id)
+      || state.users[0];
     if (!ids.includes(state.currentUser)) state.currentUser = current.user_id;
+    if (ids.includes(remembered)) state.currentUser = remembered;
     $("userSelect").innerHTML = state.users.map((user) => `<option value="${escapeHtml(user.user_id)}">${escapeHtml(user.label)}</option>`).join("");
     $("userSelect").value = state.currentUser;
-    if ($("profileUserId")) $("profileUserId").value = state.currentUser;
+  }
+
+  function openPaperDailyUser() {
+    $("pdUserId").value = "";
+    $("pdUserDialog")?.showModal();
+  }
+
+  async function createPaperDailyUser() {
+    const form = $("pdUserForm");
+    if (!form.reportValidity()) return;
+    const userId = $("pdUserId").value.trim();
+    const data = await api("/api/paperdaily/users", {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId })
+    });
+    $("pdUserDialog")?.close();
+    window.localStorage.setItem("paperdaily.user_id", data.user?.user_id || userId);
+    state.currentUser = data.user?.user_id || userId;
+    await loadUsers();
+    $("userSelect").value = state.currentUser;
+    await loadPaperDaily({ loadDigest: true });
+    showFeedbackToast("success", "研究者空间已创建", state.currentUser);
   }
 
   async function loadHealth() {
@@ -2730,7 +2784,6 @@
       if (data.cached || data.task?.status === "completed") {
         if (data.task?.push) renderPush(data.task.push, { fromCache: Boolean(data.cached || data.task.cached) });
         if (data.cached) showFeedbackToast("success", ui().papers.loadedCacheTitle, ui().papers.loadedCacheDetail);
-        await loadWiki();
         return;
       }
       if (taskId) setDailyTaskState(taskId, userId, true);
@@ -2768,7 +2821,6 @@
   async function pollDailyTask(taskId, immediatePush = null, userId = currentUser(), pollToken = state.dailyPollToken) {
     if (!taskId) {
       renderPush(immediatePush || { papers: [], metadata: { total_fetched: 0, paper_count: 0 } });
-      await loadWiki();
       return;
     }
     setDailyTaskState(taskId, userId, true);
@@ -2779,7 +2831,6 @@
       if (!task) break;
       if (task.status === "completed") {
         renderPush(task.push || { papers: [], metadata: { total_fetched: 0, paper_count: 0 } });
-        await loadWiki();
         return;
       }
       if (task.status === "failed") {
@@ -2989,7 +3040,6 @@
         });
       }
       showSubmitResult(data, generateReports);
-      await loadWiki();
       if (generateReports) {
         const docs = data.reports?.created_docs || [];
         if (docs[0]?.report_id) {
@@ -3491,7 +3541,6 @@
       );
       showFeedbackToast(warning ? "warning" : "success", ui().reports.generatedToast, reportTitle);
       await openReport(doc.report_id);
-      await loadWiki();
     } catch (error) {
       setDirectReadStatus(kind, "error", ui().reports.generationFailed, error.message || String(error));
       throw error;
@@ -4470,6 +4519,7 @@
   }
 
   async function loadWiki() {
+    if (!$("wikiStats")) return;
     const stats = await api(`/api/wiki/stats?user_id=${encodeURIComponent(currentUser())}`);
     state.wikiStats = stats;
     $("wikiNodeStat").textContent = stats.nodes || 0;
@@ -4902,9 +4952,12 @@
   }
 
   async function openCitationSource(nodeId, title) {
-    setView("wiki", true, { skipLoad: true });
-    $("wikiQuery").value = title || nodeId || "";
-    await searchWiki();
+    const source = state.chatSources.find((item) => item.node_id === nodeId);
+    if (source?.url) {
+      window.open(source.url, "_blank", "noopener");
+      return;
+    }
+    showFeedbackToast("info", "引用来源", title || "该引用没有可直接打开的链接。");
   }
 
   function chunkText(text) {
@@ -5669,30 +5722,15 @@
     const fallbackModel = envInfo(env, "PAPERFLOW_FALLBACK_LLM_MODEL", "GPT-4o");
     if ($("maxConcurrencyInput")) $("maxConcurrencyInput").value = concurrency.value || "5";
     if ($("fallbackModelInput")) $("fallbackModelInput").value = fallbackModel.value || "GPT-4o";
-    const sourcePrefs = data.source_preferences || {};
     const reportPrefs = data.report_preferences || {};
     const advanced = data.advanced || {};
-    $("settingEnableArxiv").checked = sourcePrefs.enable_arxiv !== false;
-    $("settingEnableSemanticScholar").checked = sourcePrefs.enable_semantic_scholar !== false;
-    $("settingEnableOpenReview").checked = sourcePrefs.enable_openreview !== false;
-    $("settingEnableCustomRss").checked = Boolean(sourcePrefs.enable_custom_rss);
-    renderSettingTags("settingArxivCategories", sourcePrefs.arxiv_categories || ["cs.CL", "cs.AI", "cs.IR", "cs.LG"]);
-    setConferenceAccessMode(sourcePrefs.conference_access_mode || "public");
-    setEnvFieldValue("semanticScholarApiKey", env, "SEMANTIC_SCHOLAR_API_KEY");
-    setEnvFieldValue("openReviewUsername", env, "OPENREVIEW_USERNAME");
-    setEnvFieldValue("openReviewToken", env, "OPENREVIEW_TOKEN");
-    setEnvFieldValue("conferenceCookieFile", env, "PAPERFLOW_CONFERENCE_COOKIE_FILE", "", ["OPENREVIEW_COOKIE_FILE"]);
-    updateSourceAuthStatus(sourcePrefs, env);
-    renderConferenceSettings(sourcePrefs);
-    renderRssUrls(sourcePrefs.custom_rss_urls || []);
-    syncDailySourceControls(sourcePrefs);
     document.querySelectorAll("[data-pref-mode]").forEach((button) => {
       button.classList.toggle("active", button.dataset.prefMode === (reportPrefs.style || "standard"));
     });
     $("directWriteFeishu").checked = Boolean(reportPrefs.write_feishu);
     $("writeFeishuReports").checked = Boolean(reportPrefs.write_feishu);
     $("directPdfWriteFeishu").checked = Boolean(reportPrefs.write_feishu);
-    $("wikiIngestSetting").checked = reportPrefs.wiki_ingest !== false;
+    if ($("wikiIngestSetting")) $("wikiIngestSetting").checked = reportPrefs.wiki_ingest !== false;
     if ($("notesGitLlmReviewSetting")) $("notesGitLlmReviewSetting").checked = paths.reading_notes_git_llm_review !== false;
     $("dailyLimitInput").value = advanced.daily_limit ?? 30;
     $("relevanceThreshold").value = advanced.relevance_threshold ?? 60;
@@ -5811,7 +5849,6 @@
   async function loadSettings() {
     const data = await api("/api/settings");
     renderSettings(data);
-    await loadCurrentProfile();
   }
 
   async function saveSettings() {
@@ -5825,17 +5862,19 @@
     if ($("fallbackModelInput")) {
       values.PAPERFLOW_FALLBACK_LLM_MODEL = $("fallbackModelInput").value;
     }
-    values.PAPERFLOW_DEFAULT_ARXIV_CATEGORIES = Array.from($("settingArxivCategories").querySelectorAll("span")).map((item) => item.textContent.trim()).filter(Boolean).join(",");
-    values.PAPERFLOW_DEFAULT_CONFERENCES = selectedSettingConferences().join(",");
-    values.PAPERFLOW_CUSTOM_RSS_URLS = rssUrls().filter((url) => url !== ui().settings.customRssMissing).join(",");
-    values.PAPERFLOW_ENABLE_ARXIV = String($("settingEnableArxiv").checked);
-    values.PAPERFLOW_ENABLE_SEMANTIC_SCHOLAR = String($("settingEnableSemanticScholar").checked);
-    values.PAPERFLOW_ENABLE_OPENREVIEW = String($("settingEnableOpenReview").checked);
-    values.PAPERFLOW_ENABLE_CUSTOM_RSS = String($("settingEnableCustomRss").checked);
-    values.PAPERFLOW_CONFERENCE_ACCESS_MODE = document.querySelector('input[name="conferenceAccessMode"]:checked')?.value || "public";
+    // PaperDaily itself is arXiv-only. Keep the legacy source switches pinned
+    // off when this settings form is saved so an old daily-push command cannot
+    // silently re-enable conference, journal, or third-party fetchers.
+    values.PAPERFLOW_ENABLE_ARXIV = "true";
+    values.PAPERFLOW_ENABLE_SEMANTIC_SCHOLAR = "false";
+    values.PAPERFLOW_ENABLE_OPENREVIEW = "false";
+    values.PAPERFLOW_ENABLE_CUSTOM_RSS = "false";
+    values.PAPERFLOW_DEFAULT_CONFERENCES = "";
+    values.PAPERFLOW_DEFAULT_JOURNALS = "";
+    values.PAPERFLOW_CUSTOM_RSS_URLS = "";
     values.PAPERFLOW_REPORT_STYLE = document.querySelector("[data-pref-mode].active")?.dataset.prefMode || "standard";
     values.PAPERFLOW_WRITE_FEISHU = String($("writeFeishuReports").checked || $("directWriteFeishu").checked || $("directPdfWriteFeishu").checked);
-    values.PAPERFLOW_WIKI_INGEST = String($("wikiIngestSetting").checked);
+    values.PAPERFLOW_WIKI_INGEST = "false";
     values.PAPERFLOW_READING_NOTES_GIT_LLM_REVIEW = String($("notesGitLlmReviewSetting")?.checked !== false);
     values.PAPERFLOW_DAILY_LIMIT = $("dailyLimitInput").value;
     values.PAPERFLOW_RELEVANCE_THRESHOLD = $("relevanceThreshold").value;
@@ -5850,10 +5889,7 @@
     state.wikiMap = null;
     state.currentWikiNodeId = "";
     state.currentWikiEditNodeId = "";
-    if ($("wikiQuery")) $("wikiQuery").value = "";
-    if (state.currentView === "wiki") {
-      await loadWiki();
-    } else if (state.currentView === "reports") {
+    if (state.currentView === "reports") {
       await refreshReports({ keepSelection: false });
     }
     showSettingsMessage(ui().settings.settingsSavedMessage);
@@ -5956,21 +5992,14 @@
     window.addEventListener("hashchange", () => setView(window.location.hash.slice(1) || "papers", false));
     $("refreshUsersBtn").addEventListener("click", () => runAction(async () => {
       await loadUsers();
-      await loadCurrentProfile();
+      await loadPaperDaily({ loadDigest: true });
     }, "刷新用户"));
+    $("addPaperDailyUserBtn")?.addEventListener("click", openPaperDailyUser);
     $("userSelect").addEventListener("change", () => {
-      state.dailyPollToken += 1;
-      setDailyTaskState("", "", false);
       state.currentUser = currentUser();
+      window.localStorage.setItem("paperdaily.user_id", state.currentUser);
       runAction(async () => {
-        startNewChat({ silent: true });
-        await loadLatestPush();
-        await loadWiki();
-        await loadCurrentProfile();
-        if (document.querySelector(".view.active")?.id === "chat") {
-          await loadChatSessions({ openLatest: true });
-        }
-        await resumeDailyTask();
+        await loadPaperDaily({ loadDigest: true });
       }, "切换用户");
     });
 
@@ -6026,6 +6055,10 @@
       () => loadPaperDailyDigest($("pdDigestRunSelect")?.value || ""),
       "加载日报"
     ));
+    $("pdRetrySummariesBtn")?.addEventListener("click", () => runAction(
+      retryPaperDailySummaries,
+      "重试中文摘要"
+    ));
     $("pdDigestRunSelect")?.addEventListener("change", (event) => runAction(
       () => loadPaperDailyDigest(event.target.value),
       "加载日报"
@@ -6046,7 +6079,7 @@
       runAction(async () => {
         await api("/api/paperdaily/topics", {
           method: "POST",
-          body: JSON.stringify({ action: "enabled", topic_id: toggle.dataset.pdTopicEnable, enabled: toggle.checked })
+          body: JSON.stringify({ user_id: currentUser(), action: "enabled", topic_id: toggle.dataset.pdTopicEnable, enabled: toggle.checked })
         });
         await loadPaperDaily({ loadDigest: false });
       }, "更新研究话题");
@@ -6072,6 +6105,12 @@
     $("pdTopicForm")?.addEventListener("submit", (event) => {
       event.preventDefault();
       runAction(savePaperDailyTopic, "保存研究话题");
+    });
+    $("pdUserCancelBtn")?.addEventListener("click", () => $("pdUserDialog")?.close());
+    $("pdUserCancelFooterBtn")?.addEventListener("click", () => $("pdUserDialog")?.close());
+    $("pdUserForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      runAction(createPaperDailyUser, "创建研究者空间");
     });
 
     $("refreshReportsBtn").addEventListener("click", () => runAction(() => refreshReports({ keepSelection: false }), "刷新报告"));
@@ -6140,6 +6179,7 @@
     $("readArxivBtn").addEventListener("click", () => runAction(() => directRead("arxiv"), "生成报告"));
     $("readPdfBtn").addEventListener("click", () => runAction(() => directRead("pdf"), "生成报告"));
 
+    if ($("refreshWikiBtn")) {
     $("refreshWikiBtn").addEventListener("click", () => runAction(refreshWiki, "更新 Wiki"));
     $("syncGithubBtn")?.addEventListener("click", () => runAction(syncGithubNotes, "同步 GitHub"));
     $("wikiSearchBtn").addEventListener("click", () => runAction(searchWiki, "搜索 Wiki"));
@@ -6269,6 +6309,7 @@
         await loadWiki();
       }
     }, "保存 Wiki"));
+    }
 
     $("wikiAskBtn").addEventListener("click", () => runAction(askWiki, "生成回答"));
     $("newChatBtn").addEventListener("click", () => runAction(() => startNewChat(), "新建对话"));
@@ -6340,28 +6381,6 @@
     $("saveStorageSettingsBtn").addEventListener("click", () => runAction(saveSettings, "保存设置"));
     $("testLlmBtn").addEventListener("click", () => runAction(() => testProvider("llm"), "测试 LLM"));
     $("testEmbedBtn").addEventListener("click", () => runAction(() => testProvider("embedding"), "测试 Embedding"));
-    document.querySelectorAll('input[name="conferenceAccessMode"]').forEach((input) => {
-      input.addEventListener("change", () => syncConferenceAccessUi(input.value));
-    });
-    $("settingConferenceList").addEventListener("change", (event) => {
-      const input = event.target.closest("input[type='checkbox']");
-      const item = event.target.closest(".conference-source-item");
-      if (input && item) item.classList.toggle("active", input.checked);
-    });
-    $("saveProfileBtn").addEventListener("click", () => runAction(saveProfile, "保存画像"));
-    $("addSourceUrlBtn").addEventListener("click", addCustomSource);
-    $("sourceUrlInput").addEventListener("keydown", (event) => {
-      if (event.key === "Enter") addCustomSource();
-    });
-    $("customSourcesList").addEventListener("click", (event) => {
-      const button = event.target.closest("[data-remove-source]");
-      if (button) {
-        const row = button.closest("div");
-        const label = row?.querySelector("strong")?.textContent || ui().common.customSource;
-        row?.remove();
-        showSettingsMessage(ui().settings.sourceRemoved(label));
-      }
-    });
     document.querySelectorAll("[data-pref-mode]").forEach((button) => {
       button.addEventListener("click", () => {
         document.querySelectorAll("[data-pref-mode]").forEach((item) => item.classList.toggle("active", item === button));
@@ -6406,7 +6425,6 @@
     await loadHealth();
     await loadUsers();
     await loadSourceOptions();
-    await loadWiki();
     await loadSettings();
     await loadLlmSetup({ openWhenMissing: true });
     updatePaperDailyCustomDates();

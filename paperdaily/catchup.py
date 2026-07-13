@@ -38,10 +38,10 @@ def local_today(timezone: str = "Asia/Shanghai") -> date:
 
 
 def default_target_date(*, today: DateValue | None = None, timezone: str = "Asia/Shanghai") -> date:
-    """The latest complete daily window: yesterday in the user's timezone."""
+    """The arXiv announcement day currently being tracked in the user's timezone."""
 
     resolved_today = _coerce_date(today, name="today", allow_none=True) or local_today(timezone)
-    return resolved_today - timedelta(days=1)
+    return resolved_today
 
 
 @dataclass(frozen=True)
@@ -123,6 +123,9 @@ class CatchupPlan:
 
 
 _CHOICE_ALIASES = {
+    "latest": "yesterday",
+    "today": "yesterday",
+    "announcement": "yesterday",
     "1d": "yesterday",
     "last_day": "yesterday",
     "last_7_days": "7d",
@@ -319,7 +322,7 @@ class CatchupPlanner:
                 return DateWindow(None, end, "custom")
             return DateWindow(start, end, "custom")
 
-        raise ValueError("choice must be yesterday, 7d, 30d, all, custom, or recommended")
+        raise ValueError("choice must be latest, yesterday, 7d, 30d, all, custom, or recommended")
 
 
 def resolve_fetch_window(

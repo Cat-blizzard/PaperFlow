@@ -106,7 +106,7 @@ storing large media files in the Git repository.
     </td>
   </tr>
 </table>
-<sub><i>Demo: daily paper pull, feedback actions, deep reading, report review, local Wiki graph, cited Q&A, and settings.</i></sub>
+<sub><i>Demo: daily paper pull, feedback actions, deep reading, report review, cited Q&A, and settings.</i></sub>
 
 <br>
 
@@ -119,18 +119,6 @@ storing large media files in the Git repository.
       <img src="https://github.com/user-attachments/assets/018aa646-41fa-4967-b4d4-6d6a54df51cf" alt="PaperFlow daily paper recommendation stream">
       <br><b>Daily paper stream</b><br>
       Date-aware pulls, source filters, candidate metrics, paper actions, and backend task state.
-    </td>
-    <td width="50%">
-      <img src="https://github.com/user-attachments/assets/305279b3-1350-4169-887c-99c0cac29a15" alt="PaperFlow knowledge Wiki graph">
-      <br><b>Knowledge Wiki graph</b><br>
-      Backend-derived paper, topic, method, profile, and citation relationships.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="https://github.com/user-attachments/assets/6685dd75-e2e2-45d1-b440-1ca5325eca1d" alt="PaperFlow cited local Wiki question answering">
-      <br><b>Cited Wiki Q&A</b><br>
-      Streamed answers with clickable reference markers and source cards.
     </td>
     <td width="50%">
       <img src="https://github.com/user-attachments/assets/a629cc1e-e26e-4878-9eb3-97565153b711" alt="PaperFlow local settings and source configuration">
@@ -147,8 +135,8 @@ storing large media files in the Git repository.
 <img src="https://github.com/user-attachments/assets/60ff5a52-5d09-46c2-be0d-1933c19515b6" alt="PaperFlow product framework diagram" width="100%">
 
 The desktop loop is intentionally local: profile state, paper pushes, feedback,
-reading reports, and Wiki nodes stay on disk unless you explicitly enable
-external providers or Feishu/Lark export.
+and reading reports stay on disk unless you explicitly enable external
+providers or Feishu/Lark export.
 
 ## Why PaperFlow
 
@@ -358,10 +346,8 @@ real daily workflow, not a standalone mock:
 - pull papers for today's date, or intentionally fetch a previous date window
 - keep long-running daily pulls in backend task state while the UI polls status
 - mark papers as precision-read, not interested, or later
-- submit feedback and update the local profile/Wiki signal path
+- submit feedback and update the local profile signal path
 - generate or reopen reading reports from paper cards
-- inspect the backend-derived Wiki graph and search local knowledge nodes
-- ask questions over the local Wiki with clickable references
 - configure providers, source modes, storage paths, and export behavior
 
 The desktop GUI does not run background schedules. Scheduled Feishu/Lark
@@ -391,7 +377,6 @@ paperflow --help
 | `paperflow profile` | Create or update a user profile from text, PDFs, Scholar, or homepage data |
 | `paperflow daily` | Generate a daily personalized paper push |
 | `paperflow read` | Generate a personalized reading report |
-| `paperflow wiki` | List, search, and inspect the local reading wiki |
 | `paperflow feedback` | Record feedback for a previous push |
 | `paperflow gui` | Start the local browser GUI |
 | `paperflow eval` | Evaluate PaperFlow-Bench predictions |
@@ -419,17 +404,6 @@ By default, `paperflow read` uses that user's latest push in
 paperflow read 1 3 7 --user-id user_role1 --push-id push_20260401_090000 --no-feishu
 ```
 
-Daily pushes, reading reports, feedback signals, and profile-drift snapshots
-are also ingested into the local PaperFlow Wiki. Inspect it:
-
-```bash
-paperflow wiki backfill --user-id user_role1
-paperflow wiki topics --user-id user_role1
-paperflow wiki stats --user-id user_role1
-paperflow wiki search "graph rag" --user-id user_role1
-paperflow wiki ask "What have I read about graph RAG?" --user-id user_role1
-```
-
 PDFs, reading-report Markdown, monthly reports, and Topic Index files can be
 saved directly into an Obsidian vault. Point all four export variables at the
 same upper-level folder:
@@ -453,16 +427,6 @@ Index filenames also include the target month, for example
 Set `PAPERFLOW_STORAGE_ROLE_SUBDIR=false` or
 `PAPERFLOW_STORAGE_CATEGORY_SUBDIR=false` only if you want a flatter legacy
 layout.
-
-Export a monthly reading summary and Topic Index for Obsidian:
-
-```bash
-paperflow wiki monthly --user-id user_role1
-```
-
-Without `--month`, PaperFlow exports the current calendar month. Use
-`--month 2026-05` only when you intentionally want to regenerate an older
-month.
 
 Feishu/Lark document export is optional and separate from the GUI and CLI core.
 Configuration is in [docs/feishu-doc-export.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/feishu-doc-export.md).

@@ -61,6 +61,10 @@ class DailyConfig:
     arxiv_max_results: int = 5000
     arxiv_request_delay_seconds: float = 3.0
     arxiv_cache_ttl_hours: int = 24
+    arxiv_rss_enabled: bool = True
+    arxiv_rss_include_cross_list: bool = True
+    arxiv_rss_cache_ttl_minutes: int = 15
+    arxiv_api_id_batch_size: int = 20
     mmr_lambda: float = 0.75
 
     def __post_init__(self) -> None:
@@ -81,6 +85,10 @@ class DailyConfig:
         self.arxiv_max_results = int(self.arxiv_max_results)
         self.arxiv_request_delay_seconds = float(self.arxiv_request_delay_seconds)
         self.arxiv_cache_ttl_hours = int(self.arxiv_cache_ttl_hours)
+        self.arxiv_rss_enabled = bool(self.arxiv_rss_enabled)
+        self.arxiv_rss_include_cross_list = bool(self.arxiv_rss_include_cross_list)
+        self.arxiv_rss_cache_ttl_minutes = int(self.arxiv_rss_cache_ttl_minutes)
+        self.arxiv_api_id_batch_size = int(self.arxiv_api_id_batch_size)
         self.mmr_lambda = float(self.mmr_lambda)
         if self.default_limit <= 0:
             raise ConfigError("daily.default_limit must be positive")
@@ -99,6 +107,10 @@ class DailyConfig:
             raise ConfigError("daily arXiv page/result limits must be positive")
         if self.arxiv_request_delay_seconds < 0 or self.arxiv_cache_ttl_hours < 0:
             raise ConfigError("daily arXiv delay/cache TTL cannot be negative")
+        if self.arxiv_rss_cache_ttl_minutes < 0:
+            raise ConfigError("daily arXiv RSS cache TTL cannot be negative")
+        if not 1 <= self.arxiv_api_id_batch_size <= 100:
+            raise ConfigError("daily arXiv API ID batch size must be between 1 and 100")
         if not 0.0 <= self.mmr_lambda <= 1.0:
             raise ConfigError("daily.mmr_lambda must be between 0 and 1")
 
@@ -133,6 +145,10 @@ class DailyConfig:
             arxiv_max_results=raw.get("arxiv_max_results", 5000),
             arxiv_request_delay_seconds=raw.get("arxiv_request_delay_seconds", 3.0),
             arxiv_cache_ttl_hours=raw.get("arxiv_cache_ttl_hours", 24),
+            arxiv_rss_enabled=bool(raw.get("arxiv_rss_enabled", True)),
+            arxiv_rss_include_cross_list=bool(raw.get("arxiv_rss_include_cross_list", True)),
+            arxiv_rss_cache_ttl_minutes=raw.get("arxiv_rss_cache_ttl_minutes", 15),
+            arxiv_api_id_batch_size=raw.get("arxiv_api_id_batch_size", 20),
             mmr_lambda=raw.get("mmr_lambda", 0.75),
         )
 
@@ -152,6 +168,10 @@ class DailyConfig:
             "arxiv_max_results": self.arxiv_max_results,
             "arxiv_request_delay_seconds": self.arxiv_request_delay_seconds,
             "arxiv_cache_ttl_hours": self.arxiv_cache_ttl_hours,
+            "arxiv_rss_enabled": self.arxiv_rss_enabled,
+            "arxiv_rss_include_cross_list": self.arxiv_rss_include_cross_list,
+            "arxiv_rss_cache_ttl_minutes": self.arxiv_rss_cache_ttl_minutes,
+            "arxiv_api_id_batch_size": self.arxiv_api_id_batch_size,
             "mmr_lambda": self.mmr_lambda,
         }
 

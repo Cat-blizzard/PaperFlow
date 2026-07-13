@@ -83,21 +83,11 @@ PAPERFLOW_STORAGE_MONTHLY_SUBDIR=true
 3. 勾选要精读的论文，并显式标记“不感兴趣”的论文。
 4. 提交反馈，可选择同步生成本地 Markdown 精读报告。
    勾选“同时尝试写入飞书文档”后，GUI 会在本地报告生成后尝试创建飞书文档。
-5. 检索或询问本地 PaperFlow Wiki。
+5. 在“精读报告”中查看或导出本地 Markdown 笔记。
 
 GUI 里的选择、标记“不感兴趣”和提交反馈，会和 CLI / 飞书反馈一样更新同一个
 `user_id` 对应的用户画像和 drift 状态。完整反馈闭环见
 [../../docs/feedback-loop.md](../../docs/feedback-loop.md)。
-
-如果需要把本月论文简介和 Topic Index 写入 Obsidian，先在 `.env` 中配置
-`PAPERFLOW_MONTHLY_REPORT_DIR` 和可选的 `PAPERFLOW_TOPIC_INDEX_DIR`，再运行：
-
-```bash
-paperflow wiki monthly --user-id user_role1
-```
-
-不传 `--month` 时会自动导出当前日历月份；只有补生成历史月份时才需要传
-`--month 2026-05`。
 
 其他面板：
 

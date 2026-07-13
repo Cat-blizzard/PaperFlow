@@ -304,6 +304,100 @@ def test_openai_llm_can_disable_reasoning_effort(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.unit
+def test_openai_json_generation_retries_without_response_format_after_empty_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    class FakeMessage:
+        def __init__(self, content):
+            self.content = content
+
+    class FakeChoice:
+        def __init__(self, content):
+            self.message = FakeMessage(content)
+
+    class FakeResponse:
+        usage = None
+
+        def __init__(self, content):
+            self.choices = [FakeChoice(content)]
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            calls.append(dict(kwargs))
+            if kwargs.get("response_format"):
+                return FakeResponse("")
+            return FakeResponse('{"ok": true}')
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeClient:
+        chat = FakeChat()
+
+    class FakeOpenAIModule:
+        @staticmethod
+        def OpenAI(**_kwargs):
+            return FakeClient()
+
+    monkeypatch.setitem(sys.modules, "openai", FakeOpenAIModule)
+    monkeypatch.setenv("OPENAI_REASONING_EFFORT", "off")
+
+    response = OpenAILLM(model="deepseek-chat", api_key="sk-test").generate_json("return JSON")
+
+    assert response.text == '{"ok": true}'
+    assert calls[0]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in calls[1]
+
+
+@pytest.mark.unit
+def test_deepseek_compatible_endpoint_omits_reasoning_effort(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+
+    class FakeMessage:
+        content = "ok"
+
+    class FakeChoice:
+        message = FakeMessage()
+
+    class FakeResponse:
+        choices = [FakeChoice()]
+        usage = None
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            calls.append(dict(kwargs))
+            return FakeResponse()
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeClient:
+        chat = FakeChat()
+
+    class FakeOpenAIModule:
+        @staticmethod
+        def OpenAI(**_kwargs):
+            return FakeClient()
+
+    monkeypatch.setitem(sys.modules, "openai", FakeOpenAIModule)
+    monkeypatch.delenv("OPENAI_REASONING_EFFORT", raising=False)
+
+    response = OpenAILLM(
+        model="deepseek-chat",
+        api_key="sk-test",
+        base_url="https://api.deepseek.com",
+    ).generate("hello")
+
+    assert response.text == "ok"
+    assert len(calls) == 1
+    assert "reasoning_effort" not in calls[0]
+
+
+@pytest.mark.unit
 def test_hash_embedding_is_deterministic_and_normalized() -> None:
     embed = HashEmbedding(dimensions=32)
     v1 = embed.embed("alpha")

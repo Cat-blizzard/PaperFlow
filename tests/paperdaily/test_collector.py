@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 import requests
 
-from paperdaily.collector import ArxivCollector, ArxivCollectorError
+from paperdaily.collector import ArxivAnnouncementNotReady, ArxivCollector, ArxivCollectorError
 
 
 class _Response:
@@ -49,6 +49,33 @@ def _feed(entries: list[dict[str, Any]], *, total: int) -> str:
     <feed xmlns="http://www.w3.org/2005/Atom"
           xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
       <opensearch:totalResults>{total}</opensearch:totalResults>
+      {''.join(rendered)}
+    </feed>
+    """
+
+
+def _rss_feed(entries: list[dict[str, Any]]) -> str:
+    rendered: list[str] = []
+    for entry in entries:
+        rendered.append(
+            """
+            <entry>
+              <id>oai:arXiv.org:{identifier}</id>
+              <published>{published}</published>
+              <title>{title}</title>
+              <summary>arXiv:{identifier} Announce Type: {announce_type}</summary>
+              <arxiv:announce_type>{announce_type}</arxiv:announce_type>
+            </entry>
+            """.format(
+                identifier=entry["identifier"],
+                published=entry.get("published", "2026-07-13T00:00:00-04:00"),
+                title=entry.get("title", "A daily announcement"),
+                announce_type=entry.get("announce_type", "new"),
+            )
+        )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:arxiv="http://arxiv.org/schemas/atom">
       {''.join(rendered)}
     </feed>
     """
@@ -159,3 +186,63 @@ def test_fetch_window_rejects_invalid_window_and_malformed_xml() -> None:
         collector.fetch_window(date(2026, 7, 2), date(2026, 7, 1), ["cs.RO"])
     with pytest.raises(ArxivCollectorError, match="malformed XML"):
         collector.fetch_window(date(2026, 7, 1), date(2026, 7, 1), ["cs.RO"])
+
+
+def test_fetch_announcements_hydrates_rss_ids_and_keeps_cross_lists() -> None:
+    calls: list[tuple[str, dict[str, Any] | None]] = []
+    sleeps: list[float] = []
+
+    def requester(url: str, **kwargs: Any) -> _Response:
+        params = kwargs.get("params")
+        calls.append((url, dict(params) if params else None))
+        if "rss.arxiv.org" in url:
+            return _Response(
+                _rss_feed(
+                    [
+                        {"identifier": "2607.00001v1", "announce_type": "new"},
+                        {"identifier": "2607.00002v1", "announce_type": "cross"},
+                        {
+                            "identifier": "2607.00003v1",
+                            "published": "2026-07-12T00:00:00-04:00",
+                            "announce_type": "new",
+                        },
+                    ]
+                )
+            )
+        ids = str(params["id_list"]).split(",")
+        return _Response(_feed([{"identifier": f"{paper_id}v1"} for paper_id in ids], total=len(ids)))
+
+    collector = ArxivCollector(
+        cache_ttl_hours=0,
+        rss_cache_ttl_minutes=0,
+        api_id_batch_size=1,
+        request_delay_seconds=0.25,
+        requester=requester,
+        sleeper=sleeps.append,
+    )
+    result = collector.fetch_announcements(
+        date(2026, 7, 13),
+        ["cs.RO", "cs.AI", "cs.RO"],
+        timezone_name="Asia/Shanghai",
+        include_cross_list=True,
+    )
+
+    assert calls[0][0].endswith("/cs.AI+cs.RO")
+    assert [call[1]["id_list"] for call in calls[1:]] == ["2607.00001", "2607.00002"]
+    assert [paper["arxiv_id"] for paper in result.papers] == ["2607.00001", "2607.00002"]
+    assert result.source == "rss_announcements"
+    assert result.network_requests == 3
+    assert result.cache_hits == 0
+    assert sleeps == [0.25]
+
+
+def test_fetch_announcements_does_not_accept_a_stale_rss_batch() -> None:
+    collector = ArxivCollector(
+        request_delay_seconds=0,
+        requester=lambda _url, **_kwargs: _Response(
+            _rss_feed([{"identifier": "2607.00001v1", "published": "2026-07-12T00:00:00-04:00"}])
+        ),
+    )
+
+    with pytest.raises(ArxivAnnouncementNotReady, match="尚未包含"):
+        collector.fetch_announcements(date(2026, 7, 13), ["cs.RO"])

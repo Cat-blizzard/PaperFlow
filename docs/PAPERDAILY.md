@@ -3,7 +3,7 @@
 PaperDaily 是本 Fork 在 PaperFlow 之上增加的本地优先 arXiv 工作流。它面向“按研究话题持续追踪新论文”的场景，当前可完成：
 
 - 按 arXiv 分类、精确短语、关键词、上下文词和负关键词召回论文；
-- 自动处理前一个完整日期，或对遗漏日期执行 7 天、30 天、全部补推；
+- 正常日报从 arXiv RSS 获取当天新公告（含可选 cross-list），再通过官方 API 补齐元数据；历史补推仍使用官方 API 日期查询；
 - 使用真实 Embedding 时加入话题/用户画像语义相似度；配置真实 LLM 后，仅重排基础候选前 N 篇，并用 MMR 控制重复；
 - 只对最终推荐生成中文短摘要；未配置真实 LLM 时明确回退到原始英文摘要；
 - 将日报输出到终端和本地 Markdown，飞书文本推送可选；
@@ -93,6 +93,10 @@ daily:
   llm_rerank_max_tokens: 3000
   llm_rerank_input_cost_per_million_tokens: 0.0
   llm_rerank_output_cost_per_million_tokens: 0.0
+  arxiv_rss_enabled: true
+  arxiv_rss_include_cross_list: true
+  arxiv_rss_cache_ttl_minutes: 15
+  arxiv_api_id_batch_size: 20
 ```
 
 配置完成后必须重新运行 `paperdaily doctor`，确认不再显示 `hash embedding` 或 `mock` 警告。
@@ -152,7 +156,40 @@ paperdaily doctor
 
 首次使用本地模型会下载权重。若只想验证日期、抓取和规则匹配，保留 `hash` 即可。
 
-## 4. 管理研究话题
+## 4. 桌面 GUI：arXiv-only 工作流
+
+在仓库根目录启动本地界面：
+
+```powershell
+.\.venv\Scripts\paperflow.exe gui --port 8769
+```
+
+打开 `http://127.0.0.1:8769`。PaperDaily GUI 只展示 arXiv 日报流程；会议、
+期刊、OpenReview、Semantic Scholar 和自定义 RSS 不会参与这个工作流。
+
+右上角的“研究者空间”是本机隔离，而不是网络账户或密码认证：
+
+- 新建一个研究者 ID 后，会创建 `data/paperdaily/users/<user-id>.yaml`；
+- 每个研究者有独立的话题、日报、反馈和阅读笔记输出目录；
+- SQLite 仍共用一个文件，但所有推荐和反馈都按 `user_id` 隔离；
+- 仅在本机使用时不需要密码；若未来部署到局域网或公网，必须在前面增加真正的认证层。
+
+添加研究话题时只需填关键词，例如：
+
+```text
+VLA, vision-language-action, embodied AI, robotic manipulation
+```
+
+名称可留空，系统会自动生成；默认会搜索 `cs.RO`、`cs.AI`、`cs.CV`、`cs.LG` 和
+`cs.CL`。输入 `VLA` 或 `WAM` 时会自动加上机器人语境词；`WAM` 也会自动排除
+`wireless access management` 等常见误报。需要时再展开“高级匹配规则”调整分类、
+负关键词、每日上限和阈值。
+
+如果日报里的某篇显示“中文摘要生成失败”，点击日报工具栏中的“重试中文摘要”。
+该操作只重试当前日报中失败的摘要并更新 Markdown，不会重新抓取 arXiv、重新排序或
+覆盖你的反馈。
+
+## 5. 管理研究话题
 
 查看默认话题：
 
@@ -268,8 +305,8 @@ paperdaily run --window yesterday --no-summary
 # 不发送飞书等远程渠道；本地 Markdown 仍会生成
 paperdaily run --window yesterday --no-push
 
-# 选择输出渠道；--channel 可重复
-paperdaily run --window yesterday --channel terminal --channel markdown
+# 选择输出渠道；--channel 可重复。latest 是当前 arXiv 公告批次。
+paperdaily run --window latest --channel terminal --channel markdown
 
 # 无人值守时不等待交互确认
 paperdaily run --non-interactive
@@ -281,7 +318,7 @@ paperdaily auto
 paperdaily run --window 7d --include-handled
 ```
 
-日期窗口按配置中的时区计算，最新目标是“昨天”这个完整自然日。周末或 arXiv 无新发布时，`yesterday` 得到 0 篇是正常现象。
+日期窗口按配置中的时区计算，最新目标是“当前 arXiv 公告批次”。正常日报会先读取分类 RSS（默认包含 cross-list），再按 arXiv ID 分批调用官方 API 补齐标题、摘要、作者与分类；不会依赖脆弱的 HTML 页面爬取。若 RSS 尚未更新到当天，任务会停止且**不会推进 watermark**，请在公告更新后重试。`yesterday` 仍可作为 `latest` 的兼容别名。
 
 系统先按话题规则召回，再在真实 Embedding 可用时计算话题和用户画像语义相似度，同时加入反馈、时效性和轻量质量特征。若配置了真实 LLM，系统只对基础排序前 `rerank_limit` 篇进行一次结构化重排，随后仍执行 MMR 与话题配额。重排只读取标题、摘要和订阅话题；缓存命中、未配置 LLM、失败或 dry-run 都会回退到基础排序。
 

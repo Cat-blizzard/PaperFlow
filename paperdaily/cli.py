@@ -262,7 +262,7 @@ def _resolve_window(
         selected = plan.recommended_choice
         if plan.requires_confirmation and not non_interactive:
             typer.echo(f"检测到 {plan.gap_days} 天未处理，建议：{selected}")
-            selected = typer.prompt("选择 yesterday / 7d / 30d / all", default=selected)
+            selected = typer.prompt("选择 latest / 7d / 30d / all", default=selected)
     return service.select_window(plan, selected)
 
 
@@ -321,7 +321,7 @@ def _execute_run(
 @app.command()
 def run(
     config: Path | None = typer.Option(None, "--config", "-c"),
-    window: str | None = typer.Option(None, "--window", help="yesterday/7d/30d/all"),
+    window: str | None = typer.Option(None, "--window", help="latest/7d/30d/all (yesterday is a legacy alias)"),
     since: str | None = typer.Option(None, "--since", help="YYYY-MM-DD"),
     until: str | None = typer.Option(None, "--until", help="YYYY-MM-DD"),
     limit: int | None = typer.Option(None, "--limit", "-n"),
@@ -333,7 +333,7 @@ def run(
     include_handled: bool = typer.Option(False, "--include-handled", help="允许重新推荐历史论文。"),
     feishu_chat_id: str | None = typer.Option(None, "--feishu-chat-id"),
 ) -> None:
-    """处理默认待办窗口；正常情况检索昨天。"""
+    """处理默认待办窗口；正常情况检索当前 arXiv 公告批次。"""
 
     _execute_run(
         config=config,

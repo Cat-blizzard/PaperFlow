@@ -1243,7 +1243,7 @@ def settings() -> Dict[str, Any]:
     report_preferences = {
         "style": _env_text("PAPERFLOW_REPORT_STYLE", "standard") or "standard",
         "write_feishu": _env_bool("PAPERFLOW_WRITE_FEISHU", default=False),
-        "wiki_ingest": _env_bool("PAPERFLOW_WIKI_INGEST", default=True),
+        "wiki_ingest": _env_bool("PAPERFLOW_WIKI_INGEST", default=False),
     }
     advanced = {
         "daily_limit": int(_to_float(_env_text("PAPERFLOW_DAILY_LIMIT", "30"), 30)),
@@ -1264,7 +1264,7 @@ def settings() -> Dict[str, Any]:
         "role_subdir": _env_bool("PAPERFLOW_STORAGE_ROLE_SUBDIR", default=True),
         "category_subdir": _env_bool("PAPERFLOW_STORAGE_CATEGORY_SUBDIR", default=True),
         "monthly_subdir": _env_bool("PAPERFLOW_STORAGE_MONTHLY_SUBDIR", default=True),
-        "wiki_ingest": _env_bool("PAPERFLOW_WIKI_INGEST", default=True),
+        "wiki_ingest": _env_bool("PAPERFLOW_WIKI_INGEST", default=False),
         "write_feishu": _env_bool("PAPERFLOW_WRITE_FEISHU", default=False),
     }
     return {

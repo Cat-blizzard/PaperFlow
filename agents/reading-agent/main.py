@@ -322,7 +322,7 @@ def _paper_title_file_stem(paper: Dict[str, Any], *, max_len: int = 96) -> str:
 
 
 def _wiki_ingest_enabled() -> bool:
-    return os.environ.get("PAPERFLOW_WIKI_INGEST", "1").strip().lower() not in {
+    return os.environ.get("PAPERFLOW_WIKI_INGEST", "0").strip().lower() not in {
         "0",
         "false",
         "off",

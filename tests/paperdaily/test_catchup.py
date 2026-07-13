@@ -12,10 +12,10 @@ from paperdaily.catchup import (
 )
 
 TODAY = date(2026, 7, 12)
-TARGET = date(2026, 7, 11)
+TARGET = date(2026, 7, 12)
 
 
-def test_default_target_is_previous_complete_day() -> None:
+def test_default_target_is_current_announcement_day() -> None:
     assert default_target_date(today=TODAY) == TARGET
 
 
@@ -24,7 +24,7 @@ def test_first_run_defaults_to_seven_days_and_confirmation() -> None:
 
     assert plan.first_run is True
     assert plan.gap_days == 7
-    assert plan.missing_start == date(2026, 7, 5)
+    assert plan.missing_start == date(2026, 7, 6)
     assert plan.recommended_choice == "7d"
     assert plan.recommended_window.days == 7
     assert plan.requires_confirmation is True
@@ -33,12 +33,12 @@ def test_first_run_defaults_to_seven_days_and_confirmation() -> None:
 @pytest.mark.parametrize(
     ("last_completed", "gap", "choice", "confirm", "start"),
     [
-        (date(2026, 7, 10), 1, "all", False, date(2026, 7, 11)),
-        (date(2026, 7, 9), 2, "all", False, date(2026, 7, 10)),
-        (date(2026, 7, 8), 3, "7d", True, date(2026, 7, 9)),
-        (date(2026, 7, 4), 7, "7d", True, date(2026, 7, 5)),
-        (date(2026, 6, 23), 18, "7d", True, date(2026, 7, 5)),
-        (date(2026, 5, 31), 41, "30d", True, date(2026, 6, 12)),
+        (date(2026, 7, 10), 2, "all", False, date(2026, 7, 11)),
+        (date(2026, 7, 9), 3, "7d", True, date(2026, 7, 10)),
+        (date(2026, 7, 8), 4, "7d", True, date(2026, 7, 9)),
+        (date(2026, 7, 4), 8, "7d", True, date(2026, 7, 6)),
+        (date(2026, 6, 23), 19, "7d", True, date(2026, 7, 6)),
+        (date(2026, 5, 31), 42, "30d", True, date(2026, 6, 13)),
     ],
 )
 def test_gap_policy_boundaries(last_completed, gap, choice, confirm, start) -> None:
@@ -71,7 +71,7 @@ def test_supported_choices_are_inclusive_and_clamped_to_missing_range() -> None:
     plan = planner.plan(date(2026, 6, 23), today=TODAY)
 
     assert planner.select(plan, "yesterday").days == 1
-    assert planner.select(plan, "7d").start_date == date(2026, 7, 5)
+    assert planner.select(plan, "7d").start_date == date(2026, 7, 6)
     assert planner.select(plan, "30d").start_date == date(2026, 6, 24)
     assert planner.select(plan, "all").start_date == date(2026, 6, 24)
     assert planner.select(plan, "recommended") == plan.recommended_window
@@ -83,7 +83,7 @@ def test_first_run_can_explicitly_request_thirty_days() -> None:
 
     selected = apply_catchup_choice(plan, "30d", planner=planner)
 
-    assert selected.start_date == date(2026, 6, 12)
+    assert selected.start_date == date(2026, 6, 13)
     assert selected.end_date == TARGET
     assert selected.days == 30
 
@@ -102,7 +102,7 @@ def test_custom_window_validation_and_existing_watermark_clamp() -> None:
     assert selected.end_date == date(2026, 7, 8)
 
     with pytest.raises(ValueError, match="later than target_date"):
-        planner.select(plan, "custom", custom_start=date(2026, 7, 2), custom_end=TODAY)
+        planner.select(plan, "custom", custom_start=date(2026, 7, 2), custom_end=date(2026, 7, 13))
     with pytest.raises(ValueError, match="later than custom_end"):
         planner.select(plan, "custom", custom_start=date(2026, 7, 9), custom_end=date(2026, 7, 8))
 

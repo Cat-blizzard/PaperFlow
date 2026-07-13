@@ -24,10 +24,6 @@
             <span class="rail-icon" aria-hidden="true">▱</span>
             <span>精读报告</span>
           </button>
-          <button class="rail-item" data-view="wiki" type="button" title="知识 Wiki">
-            <span class="rail-icon" aria-hidden="true">◎</span>
-            <span>知识Wiki</span>
-          </button>
           <button class="rail-item" data-view="chat" type="button" title="对话问答">
             <span class="rail-icon" aria-hidden="true">◌</span>
             <span>对话</span>
@@ -56,10 +52,11 @@
               </select>
             </label>
             <label class="user-picker">
-              <span>用户画像</span>
-              <select id="userSelect" aria-label="选择用户画像"></select>
+              <span>研究者空间</span>
+              <select id="userSelect" aria-label="选择研究者空间"></select>
             </label>
-            <button id="refreshUsersBtn" class="icon-button" type="button" title="刷新用户" aria-label="刷新用户">↻</button>
+            <button id="addPaperDailyUserBtn" class="icon-button" type="button" title="新建研究者空间" aria-label="新建研究者空间">＋</button>
+            <button id="refreshUsersBtn" class="icon-button" type="button" title="刷新研究者空间" aria-label="刷新研究者空间">↻</button>
             <div class="status-pill" id="statusText">就绪</div>
           </div>
         </header>
@@ -83,7 +80,6 @@
                 <div><span>当前批次候选</span><strong id="candidateStat">-</strong><em>篇</em></div>
                 <div><span>推荐数</span><strong id="filteredStat">-</strong><em>篇</em></div>
                 <div><span>已标记精读</span><strong id="selectedStat">0</strong><em>篇</em></div>
-                <div><span>知识节点</span><strong id="wikiNodeStat">-</strong><em>个</em></div>
               </div>
 
               <div class="source-config">
@@ -114,7 +110,7 @@
               <div class="submit-bar">
                 <div>
                   <strong id="selectionSummary">0 篇待精读，0 篇不感兴趣</strong>
-                  <p>选择会写入本地反馈；精读报告会进入报告库，并成为 Wiki 的候选知识条目。</p>
+                  <p>选择会写入本地反馈；精读报告会保存到本地报告库。</p>
                   <div id="paperFeedbackResult" class="paper-feedback-result" role="status" aria-live="polite" hidden></div>
                 </div>
                 <div class="button-row">
@@ -195,6 +191,7 @@
                       </select>
                     </label>
                     <button id="pdLoadLatestBtn" type="button">加载日报</button>
+                    <button id="pdRetrySummariesBtn" type="button">重试中文摘要</button>
                   </div>
                 </div>
                 <div id="pdDigestList" class="paperdaily-digest-list empty">暂无完成的 PaperDaily 日报。</div>
@@ -292,57 +289,6 @@
           </div>
         </section>
 
-        <section id="wiki" class="view" data-title="知识 Wiki" data-kicker="Knowledge Wiki">
-          <div class="wiki-layout">
-            <div class="wiki-main">
-              <div class="pane-head">
-                <h2>Wiki 架构图</h2>
-                <div class="button-row">
-                  <button id="refreshWikiBtn" class="primary" type="button">更新 Wiki</button>
-                  <button id="syncGithubBtn" type="button">同步 GitHub</button>
-                  <button id="wikiSearchBtn" type="button">搜索</button>
-                </div>
-              </div>
-              <div class="wiki-toolbar">
-                <div class="segmented" role="tablist" aria-label="Wiki 视图">
-                  <button class="active" data-wiki-view="graph" type="button">图谱视图</button>
-                  <button data-wiki-view="list" type="button">列表视图</button>
-                </div>
-                <select id="wikiDailyScope" aria-label="Daily Note 范围">
-                  <option value="latest">最新 Daily Note</option>
-                  <option value="month">指定月份</option>
-                  <option value="all">全部 Daily Note</option>
-                </select>
-                <input id="wikiDailyMonth" type="month" aria-label="Daily Note 月份" hidden>
-                <input id="wikiQuery" placeholder="搜索节点、主题、论文或方法">
-                <span id="wikiStats">尚未加载知识库统计。</span>
-              </div>
-              <div id="wikiGraph" class="wiki-graph" aria-label="知识图谱预览"></div>
-              <div class="wiki-document">
-                <div class="document-head">
-                  <p class="document-label">当前条目</p>
-                  <button id="editWikiEntryBtn" type="button">编辑</button>
-                </div>
-                <h2 id="wikiEntryTitle">知识库架构</h2>
-                <div id="wikiEntryBody" class="wiki-entry-body">从本地 Wiki 节点、论文关系和用户反馈中整理出当前知识库结构。</div>
-                <textarea id="wikiEntryEditor" class="wiki-entry-editor" rows="5" hidden></textarea>
-              </div>
-            </div>
-
-            <aside class="related-pane wiki-evidence-pane">
-              <div class="related-head">
-                <h2>关联论文</h2>
-                <span id="wikiEvidenceSummary">等待检索</span>
-              </div>
-              <div id="wikiResults" class="result-list empty">暂无检索结果。</div>
-              <h2>相关概念</h2>
-              <div class="tag-cloud" id="wikiTags">
-                <span>主题主线</span><span>方法片段</span><span>论文证据</span><span>用户方向</span>
-              </div>
-            </aside>
-          </div>
-        </section>
-
         <section id="chat" class="view" data-title="对话问答" data-kicker="Chat & Ask">
           <div class="chat-layout">
             <aside class="chat-history-pane">
@@ -364,14 +310,14 @@
                 <div class="message assistant">
                   <div class="avatar">AI</div>
                   <div class="bubble">
-                    <p>可以围绕最近论文、精读报告和 Wiki 条目提问；回答会列出参考文献。</p>
+                    <p>可以围绕最近论文和精读报告提问；回答会列出参考文献。</p>
                   </div>
                 </div>
               </div>
               <div id="chatMentionChips" class="mention-chips" hidden></div>
               <div id="mentionSuggestions" class="mention-suggestions" hidden></div>
               <div class="chat-composer">
-                <textarea id="chatInput" rows="3" placeholder="输入问题，使用 @ 选择论文或 Wiki 节点"></textarea>
+                <textarea id="chatInput" rows="3" placeholder="输入问题，使用 @ 选择论文或精读报告"></textarea>
                 <button id="wikiAskBtn" class="primary" type="button">发送</button>
               </div>
             </div>
@@ -380,7 +326,7 @@
               <h2>参考文献</h2>
               <div id="chatSources" class="source-list"></div>
               <h2>对话范围</h2>
-              <label class="radio-card"><input name="chatScope" type="radio" value="all" checked> 全部知识库</label>
+              <label class="radio-card"><input name="chatScope" type="radio" value="all" checked> 全部论文与报告</label>
               <label class="radio-card"><input name="chatScope" type="radio" value="recent"> 仅最近 7 天</label>
               <label class="radio-card"><input name="chatScope" type="radio" value="profile"> 仅当前方向</label>
             </aside>
@@ -408,71 +354,10 @@
               <pre id="providerTestOutput" class="answer empty">尚未运行提供商测试。</pre>
             </section>
 
-            <section class="setting-card settings-source" hidden>
-              <div class="setting-card-head">
-                <span>3</span>
-                <h2>论文来源</h2>
-              </div>
-              <div class="source-settings">
-                <label><input id="settingEnableArxiv" type="checkbox" checked><span><strong>arXiv</strong><em>公开 RSS/API</em></span></label>
-                <label><input id="settingEnableSemanticScholar" type="checkbox" checked><span><strong>Semantic Scholar</strong><em id="semanticScholarAuthStatus">API Key 可选</em></span></label>
-                <label><input id="settingEnableOpenReview" type="checkbox" checked><span><strong>OpenReview</strong><em id="openReviewAuthStatus">公开优先</em></span></label>
-                <label><input id="settingEnableCustomRss" type="checkbox"><span><strong>自定义 RSS</strong><em>补充会议/期刊</em></span></label>
-              </div>
-              <div class="source-setting-row">
-                <span>arXiv 分类</span>
-                <div class="tag-cloud compact" id="settingArxivCategories"><span>cs.CL</span><span>cs.AI</span><span>cs.IR</span><span>cs.LG</span></div>
-              </div>
-              <div class="source-setting-row">
-                <span>会议源</span>
-                <div id="settingConferenceList" class="conference-source-list empty">正在加载会议源。</div>
-              </div>
-              <div class="source-auth-panel">
-                <div class="source-auth-head">
-                  <strong>会议访问方式</strong>
-                  <span id="conferenceAuthStatus">公开源优先</span>
-                </div>
-                <div class="source-mode-grid">
-                  <label><input name="conferenceAccessMode" type="radio" value="public" checked><span><strong>公开聚合</strong><em>OpenReview、会议公开页面、arXiv 优先</em></span></label>
-                  <label><input name="conferenceAccessMode" type="radio" value="credential"><span><strong>本地授权</strong><em>API Key / token / cookie 文件</em></span></label>
-                  <label><input name="conferenceAccessMode" type="radio" value="manual"><span><strong>手动补充</strong><em>RSS、日程 URL、导出的论文列表</em></span></label>
-                </div>
-                <div class="source-auth-fields">
-                  <label>Semantic Scholar API Key <input id="semanticScholarApiKey" data-env-key="SEMANTIC_SCHOLAR_API_KEY" type="password" placeholder="可选：提高限流额度"></label>
-                  <label>OpenReview 用户名 <input id="openReviewUsername" data-env-key="OPENREVIEW_USERNAME" placeholder="可选：公开页面无需填写"></label>
-                  <label>OpenReview Token <input id="openReviewToken" data-env-key="OPENREVIEW_TOKEN" type="password" placeholder="可选：本地保存"></label>
-                  <label>会议 Cookie 文件 <input id="conferenceCookieFile" data-env-key="PAPERFLOW_CONFERENCE_COOKIE_FILE" placeholder="例如 C:\\paperflow\\cookies\\neurips.txt"></label>
-                </div>
-                <p class="source-auth-note">需要登录的会议源不要混在普通下拉框里；优先使用公开页面、API Key、RSS 或本地 cookie/token 文件路径，凭据只写入本机 .env。</p>
-              </div>
-              <div class="source-edit-row">
-                <input id="sourceUrlInput" placeholder="https://example.com/rss.xml">
-                <button id="addSourceUrlBtn" type="button">添加 URL</button>
-              </div>
-              <div id="customSourcesList" class="rss-stack">
-                <div><span>rss</span><strong>https://arxiv.org/rss/cs.CL</strong><button data-remove-source type="button">×</button></div>
-              </div>
-            </section>
-
-            <section class="setting-card profile-card settings-profile">
-              <div class="setting-card-head">
-                <span>6</span>
-                <h2>研究画像</h2>
-                <small id="profileSyncStatus">选择用户后自动加载画像</small>
-              </div>
-              <input id="profileUserId" placeholder="user_alice">
-              <input id="scholarUrl" placeholder="Google Scholar URL">
-              <input id="homepageUrl" placeholder="个人主页 URL">
-              <input id="pdfPaths" placeholder="PDF 路径，用分号分隔">
-              <div id="profileInfoGrid" class="profile-info-grid" aria-live="polite"></div>
-              <label class="checkline"><input id="resetProfile" type="checkbox"> 重置已有画像</label>
-              <button id="saveProfileBtn" class="primary" type="button">保存画像</button>
-            </section>
-
             <section class="setting-card settings-report">
               <div class="setting-card-head">
                 <span>4</span>
-                <h2>报告与 Wiki</h2>
+                <h2>报告选项</h2>
               </div>
               <div class="segmented preference-tabs">
                 <button class="active" data-pref-mode="standard" type="button">标准</button>
@@ -483,7 +368,6 @@
                 <label class="checkline"><input id="directWriteFeishu" type="checkbox"> 精读后写入飞书</label>
                 <label class="checkline"><input id="writeFeishuReports" type="checkbox"> 批量报告写入飞书</label>
                 <label class="checkline"><input id="directPdfWriteFeishu" type="checkbox"> PDF 精读写入飞书</label>
-                <label class="checkline"><input id="wikiIngestSetting" type="checkbox" checked> Wiki 自动增量归档</label>
                 <label class="checkline"><input id="notesGitLlmReviewSetting" type="checkbox" checked> GitHub 同步前启用 LLM 校对</label>
               </div>
             </section>
@@ -496,7 +380,6 @@
               <div class="storage-counters">
                 <div><span>论文</span><strong id="latestPushStat">-</strong></div>
                 <div><span>待读</span><strong id="readingQueueStat">0</strong></div>
-                <div><span>Wiki</span><strong id="wikiSettingStat">-</strong></div>
                 <div><span>缓存</span><strong id="cacheSizeStat">-</strong></div>
               </div>
               <div id="settingsList" class="settings-list empty">尚未加载运行目录。</div>
@@ -570,16 +453,21 @@
           <button id="pdTopicCancelBtn" class="icon-button" type="button" title="关闭" aria-label="关闭">×</button>
         </div>
         <div class="paperdaily-topic-form-grid">
-          <label>话题 ID <input id="pdTopicId" required pattern="[A-Za-z0-9][A-Za-z0-9_-]*"></label>
-          <label>名称 <input id="pdTopicName" required></label>
-          <label class="span-two">研究描述 <textarea id="pdTopicDescription" rows="3"></textarea></label>
-          <label>arXiv 分类 <textarea id="pdTopicCategories" rows="3" placeholder="cs.RO, cs.AI"></textarea></label>
-          <label>精确短语 <textarea id="pdTopicPhrases" rows="3" placeholder="vision-language-action"></textarea></label>
-          <label>关键词 <textarea id="pdTopicKeywords" rows="3" placeholder="OpenVLA, robotic manipulation"></textarea></label>
-          <label>缩写语境词 <textarea id="pdTopicContext" rows="3" placeholder="robot, manipulation, policy"></textarea></label>
-          <label>排除词 <textarea id="pdTopicNegative" rows="3" placeholder="wireless access management"></textarea></label>
-          <label>每日上限 <input id="pdTopicDailyLimit" type="number" min="1" max="100" value="12"></label>
-          <label>最低分 <input id="pdTopicMinimumScore" type="number" min="0" max="1" step="0.01" value="0.25"></label>
+          <input id="pdTopicId" type="hidden">
+          <label>话题名称（可选） <input id="pdTopicName" placeholder="例如：具身智能 / VLA"></label>
+          <label class="span-two">关键词 <textarea id="pdTopicKeywords" rows="4" required placeholder="例如：VLA, vision-language-action, embodied AI, robotic manipulation"></textarea><small>用逗号或换行分隔。名称留空时会由关键词自动生成；VLA/WAM 会自动补充机器人语境和常见误报排除规则。</small></label>
+          <details class="span-two paperdaily-topic-advanced">
+            <summary>高级匹配规则（可选）</summary>
+            <div class="paperdaily-topic-form-grid nested">
+              <label class="span-two">研究描述 <textarea id="pdTopicDescription" rows="2"></textarea></label>
+              <label>arXiv 分类 <textarea id="pdTopicCategories" rows="2" placeholder="默认：cs.RO, cs.AI, cs.CV, cs.LG, cs.CL"></textarea></label>
+              <label>精确短语 <textarea id="pdTopicPhrases" rows="2" placeholder="自动从多词关键词生成"></textarea></label>
+              <label>缩写语境词 <textarea id="pdTopicContext" rows="2" placeholder="自动处理 VLA / WAM"></textarea></label>
+              <label>排除词 <textarea id="pdTopicNegative" rows="2" placeholder="例如：wireless access management"></textarea></label>
+              <label>每日上限 <input id="pdTopicDailyLimit" type="number" min="1" max="100" value="12"></label>
+              <label>最低分 <input id="pdTopicMinimumScore" type="number" min="0" max="1" step="0.01" value="0.25"></label>
+            </div>
+          </details>
           <label class="checkline"><input id="pdTopicEnabled" type="checkbox" checked> 启用该话题</label>
         </div>
         <div class="dialog-actions">
@@ -587,6 +475,25 @@
           <span></span>
           <button id="pdTopicCancelFooterBtn" type="button">取消</button>
           <button id="pdTopicSaveBtn" class="primary" type="submit">保存话题</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="pdUserDialog" class="paperdaily-topic-dialog compact-dialog">
+      <form id="pdUserForm" method="dialog">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">PaperDaily Workspace</p>
+            <h2>新建研究者空间</h2>
+            <p class="dialog-copy">每个空间的研究话题、日报、反馈和阅读笔记彼此独立。</p>
+          </div>
+          <button id="pdUserCancelBtn" class="icon-button" type="button" title="关闭" aria-label="关闭">×</button>
+        </div>
+        <label>研究者 ID <input id="pdUserId" required pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}" placeholder="例如 alice 或 lab_robotics"></label>
+        <div class="dialog-actions">
+          <span></span>
+          <button id="pdUserCancelFooterBtn" type="button">取消</button>
+          <button class="primary" type="submit">创建并进入</button>
         </div>
       </form>
     </dialog>

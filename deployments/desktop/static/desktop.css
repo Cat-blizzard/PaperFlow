@@ -3889,3 +3889,137 @@ body.chat-view .source-list.empty {
     justify-self: stretch;
   }
 }
+
+@media (max-width: 760px) {
+  body {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .app-shell {
+    display: block;
+    padding-bottom: 72px;
+  }
+
+  .rail {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 40;
+    width: 100%;
+    height: 64px;
+    flex-direction: row;
+    padding: 5px 8px;
+    border-top: 1px solid var(--line);
+    border-right: 0;
+  }
+
+  .brand-lockup,
+  .rail-health {
+    display: none;
+  }
+
+  .rail-nav {
+    height: 100%;
+    flex-direction: row;
+    justify-content: space-around;
+    gap: 4px;
+  }
+
+  .rail-item {
+    flex: 1 1 0;
+    min-width: 0;
+    gap: 2px;
+    padding: 4px 2px;
+    font-size: 10px;
+  }
+
+  .rail-icon {
+    width: 20px;
+    height: 20px;
+    font-size: 15px;
+  }
+
+  .workspace {
+    padding: 14px 12px 24px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .language-picker {
+    grid-template-columns: auto 86px;
+  }
+
+  .user-picker {
+    flex: 1 1 180px;
+    min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .user-picker select {
+    min-width: 0;
+  }
+
+  .status-pill {
+    min-width: 58px;
+    padding: 8px;
+  }
+
+  .paperdaily-status-grid,
+  .paperdaily-run-controls,
+  .paperdaily-topic-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .paperdaily-run-actions {
+    grid-column: auto;
+    flex-wrap: wrap;
+  }
+
+  .paperdaily-run-actions button {
+    flex: 1 1 120px;
+  }
+
+  .paperdaily-digest-toolbar,
+  .paperdaily-digest-toolbar label,
+  .paperdaily-digest-toolbar select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .paperdaily-paper-row {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .paperdaily-rank {
+    width: 32px;
+    height: 32px;
+  }
+
+  .paperdaily-paper-actions {
+    grid-column: 1 / -1;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+
+  .paperdaily-note-pane .markdown-body {
+    max-height: none;
+  }
+
+  .feedback-toast {
+    top: 12px;
+    right: 12px;
+    width: calc(100vw - 24px);
+  }
+}

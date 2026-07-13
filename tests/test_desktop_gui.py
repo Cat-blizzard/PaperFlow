@@ -236,62 +236,74 @@ def test_desktop_server_delegates_paperdaily_routes(monkeypatch: pytest.MonkeyPa
     captured: dict[str, object] = {}
 
     class FakePaperDaily:
-        def status(self):
+        def list_users(self):
+            return {"users": []}
+
+        def create_user(self, user_id):
+            captured["created_user"] = user_id
+            return {"user": {"user_id": user_id}}
+
+        def status(self, user_id=None):
+            captured["status"] = user_id
             return {"configured": True}
 
-        def latest_digest(self, run_id=None):
-            captured["digest"] = run_id
+        def latest_digest(self, run_id=None, *, user_id=None):
+            captured["digest"] = (run_id, user_id)
             return {"digest": None}
 
-        def list_digests(self, *, limit=30):
-            captured["digests"] = limit
+        def list_digests(self, *, limit=30, user_id=None):
+            captured["digests"] = (limit, user_id)
             return {"runs": []}
 
         def task(self, task_id):
             captured["task"] = task_id
             return {"task_id": task_id, "status": "running"}
 
-        def read_note(self, arxiv_id):
-            captured["note"] = arxiv_id
+        def read_note(self, arxiv_id, *, user_id=None):
+            captured["note"] = (arxiv_id, user_id)
             return {"note": None}
 
-        def update_topic(self, action, body):
-            captured["topic"] = (action, body)
+        def update_topic(self, action, body, *, user_id=None):
+            captured["topic"] = (action, body, user_id)
             return {"topics": []}
 
         def start_digest_task(self, **kwargs):
             captured["run"] = kwargs
             return {"task_id": "run-task", "status": "running"}
 
-        def record_feedback(self, arxiv_id, action):
-            captured["feedback"] = (arxiv_id, action)
+        def record_feedback(self, arxiv_id, action, *, user_id=None):
+            captured["feedback"] = (arxiv_id, action, user_id)
             return {"feedback": {"action": action}}
 
-        def start_codex_read(self, arxiv_id, *, force_parse=False):
-            captured["read"] = (arxiv_id, force_parse)
+        def start_codex_read(self, arxiv_id, *, user_id=None, force_parse=False):
+            captured["read"] = (arxiv_id, force_parse, user_id)
             return {"task_id": "read-task", "status": "running"}
 
     monkeypatch.setattr(server, "paperdaily_gui", FakePaperDaily())
 
     assert server.GET_ROUTES["/api/paperdaily/status"]({}, {})["configured"] is True
-    server.GET_ROUTES["/api/paperdaily/digest"]({"run_id": "run-1"}, {})
-    server.GET_ROUTES["/api/paperdaily/digests"]({"limit": "8"}, {})
+    assert server.GET_ROUTES["/api/paperdaily/users"]({}, {}) == {"users": []}
+    server.POST_ROUTES["/api/paperdaily/users"]({}, {"user_id": "alice"})
+    server.GET_ROUTES["/api/paperdaily/digest"]({"run_id": "run-1", "user_id": "alice"}, {})
+    server.GET_ROUTES["/api/paperdaily/digests"]({"limit": "8", "user_id": "alice"}, {})
     server.GET_ROUTES["/api/paperdaily/task"]({"task_id": "task-1"}, {})
-    server.GET_ROUTES["/api/paperdaily/note"]({"arxiv_id": "2607.00001"}, {})
-    server.POST_ROUTES["/api/paperdaily/topics"]({}, {"action": "enabled", "topic_id": "embodied-vla"})
-    server.POST_ROUTES["/api/paperdaily/run"]({}, {"choice": "7d", "dry_run": True, "limit": 9})
-    server.POST_ROUTES["/api/paperdaily/feedback"]({}, {"arxiv_id": "2607.00001", "action": "interested"})
-    server.POST_ROUTES["/api/paperdaily/read"]({}, {"arxiv_id": "2607.00001", "force_parse": True})
+    server.GET_ROUTES["/api/paperdaily/note"]({"arxiv_id": "2607.00001", "user_id": "alice"}, {})
+    server.POST_ROUTES["/api/paperdaily/topics"]({}, {"user_id": "alice", "action": "enabled", "topic_id": "embodied-vla"})
+    server.POST_ROUTES["/api/paperdaily/run"]({}, {"user_id": "alice", "choice": "7d", "dry_run": True, "limit": 9})
+    server.POST_ROUTES["/api/paperdaily/feedback"]({}, {"user_id": "alice", "arxiv_id": "2607.00001", "action": "interested"})
+    server.POST_ROUTES["/api/paperdaily/read"]({}, {"user_id": "alice", "arxiv_id": "2607.00001", "force_parse": True})
 
-    assert captured["digest"] == "run-1"
-    assert captured["digests"] == 8
+    assert captured["created_user"] == "alice"
+    assert captured["digest"] == ("run-1", "alice")
+    assert captured["digests"] == (8, "alice")
     assert captured["task"] == "task-1"
-    assert captured["note"] == "2607.00001"
+    assert captured["note"] == ("2607.00001", "alice")
     assert captured["topic"][0] == "enabled"
+    assert captured["topic"][2] == "alice"
     assert captured["run"]["choice"] == "7d"
     assert captured["run"]["dry_run"] is True
-    assert captured["feedback"] == ("2607.00001", "interested")
-    assert captured["read"] == ("2607.00001", True)
+    assert captured["feedback"] == ("2607.00001", "interested", "alice")
+    assert captured["read"] == ("2607.00001", True, "alice")
 
 
 def test_desktop_daily_target_date_controls_backend_fetch_window() -> None:

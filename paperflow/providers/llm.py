@@ -112,7 +112,25 @@ class OpenAILLM:
         from openai import OpenAI  # local import keeps dependency optional
 
         self.model = model
+        self._base_url = str(base_url or "").strip().lower()
         self._client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+
+    def _supports_reasoning_effort(self) -> bool:
+        """Return whether the configured endpoint is an OpenAI reasoning API.
+
+        ``reasoning_effort`` is not a portable OpenAI-compatible parameter.
+        In particular, DeepSeek accepts it on some requests yet can produce an
+        empty ``message.content`` for ordinary ``deepseek-chat`` completions.
+        Keep the previous automatic behaviour for the official OpenAI endpoint
+        and reasoning models, but omit the parameter for other gateways.
+        """
+
+        model = self.model.strip().lower()
+        if "deepseek" in self._base_url or model.startswith("deepseek"):
+            return False
+        if not self._base_url or "api.openai.com" in self._base_url:
+            return True
+        return model.startswith(("o1", "o3", "o4", "gpt-5"))
 
     def generate(
         self,
@@ -121,6 +139,7 @@ class OpenAILLM:
         system: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: int = 1024,
+        response_format: Optional[dict[str, str]] = None,
     ) -> LLMResponse:
         messages: list[dict[str, str]] = []
         if system:
@@ -133,7 +152,9 @@ class OpenAILLM:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        efforts = _reasoning_effort_candidates()
+        if response_format:
+            kwargs["response_format"] = response_format
+        efforts = _reasoning_effort_candidates() if self._supports_reasoning_effort() else []
         response = None
         last_reasoning_error: Optional[Exception] = None
         for effort in efforts:
@@ -160,6 +181,45 @@ class OpenAILLM:
             provider=self.name,
             prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
             completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+        )
+
+    def generate_json(
+        self,
+        prompt: str,
+        *,
+        system: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+    ) -> LLMResponse:
+        """Request an API-enforced JSON object from compatible providers.
+
+        DeepSeek's chat endpoint supports OpenAI's ``json_object`` response
+        format.  Prompt-only JSON instructions are not reliable enough for a
+        daily batch because a single prose preamble used to invalidate a whole
+        summary.  Providers that do not implement this extension retain the
+        normal ``generate`` path in the caller.
+        """
+
+        response = self.generate(
+            prompt,
+            system=system,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
+        if response.text.strip():
+            return response
+
+        # Some OpenAI-compatible gateways intermittently acknowledge JSON mode
+        # but return an empty ``message.content``.  The summary prompt still
+        # contains an explicit JSON-only contract, so retrying once without the
+        # extension is more useful than treating a successful empty response as
+        # an unrecoverable formatting failure.
+        return self.generate(
+            prompt,
+            system=system,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
 
     def stream_generate(

@@ -8,6 +8,8 @@ threads so a browser request never owns a model or network operation.
 
 from __future__ import annotations
 
+from copy import deepcopy
+import re
 import threading
 from collections.abc import Callable
 from contextlib import suppress
@@ -17,17 +19,23 @@ from typing import Any
 from uuid import uuid4
 
 from paperdaily.cli import DEFAULT_CONFIG_PATH
+from paperdaily.channels import render_digest_markdown
 from paperdaily.config import PaperDailyConfig, load_config, save_config
 from paperdaily.deep_read import DeepReadService
 from paperdaily.identifiers import canonicalize_arxiv_id
+from paperdaily.models import Digest, Recommendation
 from paperdaily.providers import build_agent_provider, diagnose_agent_providers
 from paperdaily.service import PaperDailyService, RunOutcome
 from paperdaily.storage import PaperDailyStore
+from paperdaily.summaries import ChineseSummaryService
 from paperdaily.topics import Topic
 from paperflow.providers import build_embedding_provider, build_llm_provider
 
 MAX_NOTE_CHARS = 180_000
 MAX_TASK_ERROR_CHARS = 1_600
+USER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+DEFAULT_TOPIC_CATEGORIES = ["cs.RO", "cs.AI", "cs.CV", "cs.LG", "cs.CL"]
+DEFAULT_ACRONYM_CONTEXT = ["robot", "robotic", "manipulation", "embodied", "action", "policy"]
 
 
 def _utc_now() -> str:
@@ -119,15 +127,66 @@ class PaperDailyGui:
         self._tasks: dict[str, dict[str, Any]] = {}
         self._active_keys: dict[str, str] = {}
 
-    def _context(self) -> tuple[PaperDailyConfig, PaperDailyService]:
+    @staticmethod
+    def _user_id(value: str | None) -> str:
+        user_id = str(value or "").strip()
+        if not USER_ID_RE.fullmatch(user_id):
+            raise ValueError("用户 ID 只能包含字母、数字、连字符和下划线，长度最多 64 位")
+        return user_id
+
+    @property
+    def _users_dir(self) -> Path:
+        return self.config_path.parent / "users"
+
+    def _base_config(self) -> PaperDailyConfig:
         if not self.config_path.exists():
             raise FileNotFoundError(
                 f"PaperDaily 配置不存在：{self.config_path}。请先运行 `paperdaily init`。"
             )
-        config = load_config(self.config_path)
+        return load_config(self.config_path)
+
+    def _user_config_path(self, user_id: str | None, *, create: bool = True) -> Path:
+        base = self._base_config()
+        normalized = self._user_id(user_id or base.user_id)
+        path = self._users_dir / f"{normalized}.yaml"
+        if path.exists() or not create:
+            return path
+
+        # The existing top-level config becomes the original user's workspace.
+        # New local users start with their own empty topic list and output area,
+        # while feedback remains isolated by user_id in the shared SQLite DB.
+        config = deepcopy(base)
+        config.user_id = normalized
+        if normalized != base.user_id:
+            config.topics = []
+            config.output_dir = base.output_dir / "users" / normalized
+        save_config(config, path)
+        return path
+
+    def _context(self, user_id: str | None = None) -> tuple[PaperDailyConfig, PaperDailyService]:
+        config = load_config(self._user_config_path(user_id))
         store = PaperDailyStore(config.database)
         store.initialize()
         return config, PaperDailyService(config, store=store)
+
+    def list_users(self) -> dict[str, Any]:
+        if not self.config_path.exists():
+            return {"users": []}
+        base = self._base_config()
+        users: dict[str, dict[str, str]] = {base.user_id: {"user_id": base.user_id, "label": base.user_id}}
+        if self._users_dir.exists():
+            for path in sorted(self._users_dir.glob("*.yaml")):
+                try:
+                    config = load_config(path)
+                except Exception:
+                    continue
+                users[config.user_id] = {"user_id": config.user_id, "label": config.user_id}
+        return {"users": list(users.values()), "default_user_id": base.user_id}
+
+    def create_user(self, user_id: str) -> dict[str, Any]:
+        normalized = self._user_id(user_id)
+        config, _service = self._context(normalized)
+        return {"user": {"user_id": config.user_id, "label": config.user_id}, **self.list_users()}
 
     @staticmethod
     def _task_payload(task: dict[str, Any]) -> dict[str, Any]:
@@ -181,7 +240,7 @@ class PaperDailyGui:
         threading.Thread(target=execute, name=f"paperdaily-{kind}", daemon=True).start()
         return self._task_payload(task)
 
-    def status(self) -> dict[str, Any]:
+    def status(self, user_id: str | None = None) -> dict[str, Any]:
         if not self.config_path.exists():
             return {
                 "configured": False,
@@ -192,14 +251,14 @@ class PaperDailyGui:
                 "latest_run": None,
             }
 
-        config, service = self._context()
+        config, service = self._context(user_id)
         commands, _ = _provider_options(config)
         runs = service.store.list_runs(config.user_id, limit=20)
         latest_completed = next((item for item in runs if item.get("status") == "completed"), None)
         state = service.store.get_state(config.user_id) or {}
         return {
             "configured": True,
-            "config_path": str(self.config_path),
+            "config_path": str(self._user_config_path(config.user_id)),
             "user_id": config.user_id,
             "timezone": config.timezone,
             "output_dir": str(config.output_dir),
@@ -246,8 +305,8 @@ class PaperDailyGui:
             "error": str(run.get("error_message") or ""),
         }
 
-    def latest_digest(self, run_id: str | None = None) -> dict[str, Any]:
-        config, service = self._context()
+    def latest_digest(self, run_id: str | None = None, *, user_id: str | None = None) -> dict[str, Any]:
+        config, service = self._context(user_id)
         run = service.store.get_run(run_id) if run_id else None
         if run is None:
             runs = service.store.list_runs(config.user_id, limit=50)
@@ -264,10 +323,10 @@ class PaperDailyGui:
             }
         }
 
-    def list_digests(self, *, limit: int = 30) -> dict[str, Any]:
+    def list_digests(self, *, limit: int = 30, user_id: str | None = None) -> dict[str, Any]:
         """List completed digests belonging to the configured local user."""
 
-        config, service = self._context()
+        config, service = self._context(user_id)
         runs = service.store.list_runs(config.user_id, limit=max(1, min(100, int(limit))))
         return {
             "runs": [
@@ -277,54 +336,91 @@ class PaperDailyGui:
             ]
         }
 
-    def save_topic(self, raw_topic: dict[str, Any]) -> dict[str, Any]:
-        config, _service = self._context()
-        topic = Topic.from_dict(raw_topic)
+    @staticmethod
+    def _quick_topic(raw_topic: dict[str, Any]) -> Topic:
+        raw_keywords = raw_topic.get("keywords") or raw_topic.get("keywords_input") or []
+        keywords = [str(item).strip() for item in raw_keywords] if isinstance(raw_keywords, list) else [
+            item.strip() for item in re.split(r"[,\n]", str(raw_keywords))
+        ]
+        keywords = list(dict.fromkeys(item for item in keywords if item))
+        if not keywords:
+            raise ValueError("请至少输入一个研究关键词")
+
+        normalized_keywords = {item.casefold() for item in keywords}
+        acronym_context = list(raw_topic.get("context_keywords") or [])
+        if {"vla", "wam"} & normalized_keywords and not acronym_context:
+            acronym_context = list(DEFAULT_ACRONYM_CONTEXT)
+        negatives = list(raw_topic.get("negative_keywords") or [])
+        if "wam" in normalized_keywords and not negatives:
+            negatives = ["wireless access management", "web application monitoring"]
+        exact_phrases = list(raw_topic.get("exact_phrases") or [
+            item for item in keywords if " " in item or "-" in item
+        ])
+        name = str(raw_topic.get("name") or "").strip() or " / ".join(keywords[:3])
+        topic_id = str(raw_topic.get("id") or "").strip() or f"topic-{uuid4().hex[:10]}"
+        return Topic(
+            id=topic_id,
+            name=name[:100],
+            description=str(raw_topic.get("description") or f"Keywords: {', '.join(keywords)}").strip(),
+            enabled=bool(raw_topic.get("enabled", True)),
+            arxiv_categories=list(raw_topic.get("arxiv_categories") or DEFAULT_TOPIC_CATEGORIES),
+            exact_phrases=exact_phrases,
+            keywords=keywords,
+            context_keywords=acronym_context,
+            negative_keywords=negatives,
+            daily_limit=int(raw_topic.get("daily_limit") or 12),
+            minimum_score=float(raw_topic.get("minimum_score") or 0.25),
+        )
+
+    def save_topic(self, raw_topic: dict[str, Any], *, user_id: str | None = None) -> dict[str, Any]:
+        config, _service = self._context(user_id)
+        topic = self._quick_topic(raw_topic) if raw_topic.get("quick") else Topic.from_dict(raw_topic)
         for index, current in enumerate(config.topics):
             if current.id == topic.id:
                 config.topics[index] = topic
                 break
         else:
             config.topics.append(topic)
-        save_config(config, self.config_path)
+        save_config(config, self._user_config_path(config.user_id))
         return {"topic": topic.to_dict(), "topics": [item.to_dict() for item in config.topics]}
 
-    def delete_topic(self, topic_id: str) -> dict[str, Any]:
-        config, _service = self._context()
+    def delete_topic(self, topic_id: str, *, user_id: str | None = None) -> dict[str, Any]:
+        config, _service = self._context(user_id)
         normalized = str(topic_id or "").strip()
         remaining = [topic for topic in config.topics if topic.id != normalized]
         if len(remaining) == len(config.topics):
             raise ValueError("未找到该话题")
         config.topics = remaining
-        save_config(config, self.config_path)
+        save_config(config, self._user_config_path(config.user_id))
         return {"deleted": normalized, "topics": [item.to_dict() for item in config.topics]}
 
-    def set_topic_enabled(self, topic_id: str, enabled: Any) -> dict[str, Any]:
-        config, _service = self._context()
+    def set_topic_enabled(self, topic_id: str, enabled: Any, *, user_id: str | None = None) -> dict[str, Any]:
+        config, _service = self._context(user_id)
         normalized = str(topic_id or "").strip()
         topic = next((item for item in config.topics if item.id == normalized), None)
         if topic is None:
             raise ValueError("未找到该话题")
         topic.enabled = bool(enabled)
-        save_config(config, self.config_path)
+        save_config(config, self._user_config_path(config.user_id))
         return {"topic": topic.to_dict(), "topics": [item.to_dict() for item in config.topics]}
 
-    def update_topic(self, action: str, body: dict[str, Any]) -> dict[str, Any]:
+    def update_topic(self, action: str, body: dict[str, Any], *, user_id: str | None = None) -> dict[str, Any]:
         normalized = str(action or "save").strip().lower()
         if normalized == "save":
             raw = body.get("topic")
             if not isinstance(raw, dict):
                 raise ValueError("topic 必须是对象")
-            return self.save_topic(raw)
+            return self.save_topic(raw, user_id=user_id)
         if normalized == "delete":
-            return self.delete_topic(str(body.get("topic_id") or ""))
+            return self.delete_topic(str(body.get("topic_id") or ""), user_id=user_id)
         if normalized == "enabled":
-            return self.set_topic_enabled(str(body.get("topic_id") or ""), body.get("enabled"))
+            return self.set_topic_enabled(str(body.get("topic_id") or ""), body.get("enabled"), user_id=user_id)
         raise ValueError("action 必须是 save、delete 或 enabled")
 
     def start_digest_task(
         self,
         *,
+        user_id: str | None = None,
         choice: str,
         dry_run: bool,
         limit: int | None = None,
@@ -334,7 +430,7 @@ class PaperDailyGui:
         normalized_choice = str(choice or "recommended").strip().lower()
 
         def worker() -> dict[str, Any]:
-            _config, service = self._context()
+            _config, service = self._context(user_id)
             plan = service.catchup_plan()
             window = service.select_window(
                 plan,
@@ -354,17 +450,23 @@ class PaperDailyGui:
 
         return self._start_task(
             "preview" if dry_run else "digest",
-            "paperdaily-digest",
+            f"paperdaily-digest:{user_id or 'default'}",
             worker,
         )
 
-    def start_codex_read(self, arxiv_id: str, *, force_parse: bool = False) -> dict[str, Any]:
+    def start_codex_read(
+        self,
+        arxiv_id: str,
+        *,
+        user_id: str | None = None,
+        force_parse: bool = False,
+    ) -> dict[str, Any]:
         canonical = canonicalize_arxiv_id(arxiv_id)
         if not canonical:
             raise ValueError("无效的 arXiv ID")
 
         def worker() -> dict[str, Any]:
-            config, service = self._context()
+            config, service = self._context(user_id)
             commands, max_budget = _provider_options(config)
             provider = build_agent_provider(
                 "codex",
@@ -413,19 +515,100 @@ class PaperDailyGui:
                 "note_path": str(result.markdown_path),
             }
 
-        return self._start_task("codex_read", "paperdaily-codex-read", worker)
+        return self._start_task("codex_read", f"paperdaily-codex-read:{user_id or 'default'}", worker)
+
+    def start_summary_retry(self, run_id: str, *, user_id: str | None = None) -> dict[str, Any]:
+        normalized_run_id = str(run_id or "").strip()
+        if not normalized_run_id:
+            raise ValueError("run_id is required")
+
+        def worker() -> dict[str, Any]:
+            config, service = self._context(user_id)
+            run = service.store.get_run(normalized_run_id)
+            if run is None or run.get("status") != "completed":
+                raise ValueError("未找到已完成的日报")
+            if str(run.get("user_id") or "") != config.user_id:
+                raise ValueError("该日报不属于当前研究者空间")
+
+            records = service.store.get_recommendations(normalized_run_id)
+            if not records:
+                raise ValueError("该日报没有可重试的论文")
+            summary_service = ChineseSummaryService(
+                store=service.store,
+                provider=service.summary_provider,
+                language=config.daily.summary_language,
+            )
+            recommendations: list[Recommendation] = []
+            retried = 0
+            for record in records:
+                metadata = dict(record.get("metadata") or {})
+                previous = metadata.get("summary") if isinstance(metadata.get("summary"), dict) else {}
+                summary = summary_service.summarize(dict(record.get("paper") or {}))
+                if str(previous.get("status") or "") != "completed":
+                    retried += 1
+                recommendations.append(
+                    Recommendation(
+                        rank=int(record.get("rank") or 0),
+                        score=float(record.get("score") or 0.0),
+                        paper=dict(record.get("paper") or {}),
+                        matched_topics=list(metadata.get("matched_topics") or []),
+                        matched_terms=list(metadata.get("matched_terms") or []),
+                        recommendation_reason=str(metadata.get("recommendation_reason") or ""),
+                        component_scores=dict(metadata.get("component_scores") or {}),
+                        rerank=dict(metadata.get("rerank") or {}),
+                        summary=summary,
+                    )
+                )
+
+            service.store.save_recommendations(
+                normalized_run_id,
+                service._store_recommendations(recommendations),
+            )
+            window_start = datetime.fromisoformat(str(run["window_start"])).date()
+            window_end = datetime.fromisoformat(str(run["window_end"])).date()
+            digest = Digest(
+                run_id=normalized_run_id,
+                user_id=config.user_id,
+                window_start=window_start,
+                window_end=window_end,
+                generated_at=datetime.now(timezone.utc),
+                recommendations=recommendations,
+                catchup_mode=str(run.get("mode") or "daily"),
+            )
+            stored_path = str((run.get("metadata") or {}).get("output_path") or "").strip()
+            output_path = Path(stored_path) if stored_path else None
+            if output_path is not None:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_text(render_digest_markdown(digest), encoding="utf-8")
+            service.store.complete_run(
+                normalized_run_id,
+                summary_count=sum(item.summary.status == "completed" for item in recommendations if item.summary),
+                metadata={"output_path": str(output_path or "")},
+            )
+            return {
+                "run_id": normalized_run_id,
+                "retried": retried,
+                "completed": sum(item.summary.status == "completed" for item in recommendations if item.summary),
+                "total": len(recommendations),
+            }
+
+        return self._start_task(
+            "summary_retry",
+            f"paperdaily-summary:{user_id or 'default'}:{normalized_run_id}",
+            worker,
+        )
 
     def task(self, task_id: str) -> dict[str, Any] | None:
         with self._lock:
             task = self._tasks.get(str(task_id or "").strip())
             return self._task_payload(task) if task else None
 
-    def record_feedback(self, arxiv_id: str, action: str) -> dict[str, Any]:
-        _config, service = self._context()
+    def record_feedback(self, arxiv_id: str, action: str, *, user_id: str | None = None) -> dict[str, Any]:
+        _config, service = self._context(user_id)
         return {"feedback": service.record_feedback(arxiv_id, action)}
 
-    def read_note(self, arxiv_id: str) -> dict[str, Any]:
-        config, _service = self._context()
+    def read_note(self, arxiv_id: str, *, user_id: str | None = None) -> dict[str, Any]:
+        config, _service = self._context(user_id)
         canonical = canonicalize_arxiv_id(arxiv_id)
         if not canonical:
             raise ValueError("无效的 arXiv ID")

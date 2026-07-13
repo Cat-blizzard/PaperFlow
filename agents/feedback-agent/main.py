@@ -67,7 +67,7 @@ CATEGORY_LABELS = {
 
 
 def _wiki_ingest_enabled() -> bool:
-    return os.environ.get("PAPERFLOW_WIKI_INGEST", "1").strip().lower() not in {
+    return os.environ.get("PAPERFLOW_WIKI_INGEST", "0").strip().lower() not in {
         "0",
         "false",
         "off",

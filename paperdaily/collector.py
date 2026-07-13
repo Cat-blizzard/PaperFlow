@@ -17,12 +17,14 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
 from .identifiers import canonicalize_arxiv_id, deduplicate_papers, normalize_arxiv_id
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
+ARXIV_RSS_URL = "https://rss.arxiv.org/atom"
 ATOM_NS = "http://www.w3.org/2005/Atom"
 ARXIV_NS = "http://arxiv.org/schemas/atom"
 OPEN_SEARCH_NS = "http://a9.com/-/spec/opensearch/1.1/"
@@ -39,10 +41,15 @@ class ArxivFetchResult:
     network_requests: int
     cache_hits: int
     truncated: bool
+    source: str = "submitted_date"
 
 
 class ArxivCollectorError(RuntimeError):
     """Raised when an arXiv request cannot be completed safely."""
+
+
+class ArxivAnnouncementNotReady(ArxivCollectorError):
+    """Raised before arXiv has published the requested daily RSS batch."""
 
 
 def _element_text(element: ET.Element, path: str, namespaces: dict[str, str]) -> str:
@@ -118,6 +125,64 @@ def _query_for(categories: Iterable[str], start: date, end: date) -> str:
     return f"({category_query}) AND {date_query}" if category_query else date_query
 
 
+def _rss_date(value: str, *, timezone_name: str) -> date | None:
+    """Convert an RSS announcement timestamp into the user's local date."""
+
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            return date.fromisoformat(text[:10])
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        return parsed.date()
+    try:
+        return parsed.astimezone(ZoneInfo(timezone_name)).date()
+    except ZoneInfoNotFoundError:
+        return parsed.date()
+
+
+def _announcement_ids(
+    xml_text: str,
+    *,
+    target_date: date,
+    timezone_name: str,
+    include_cross_list: bool,
+) -> list[str]:
+    """Read announced arXiv IDs from a category-union RSS feed."""
+
+    namespaces = {"atom": ATOM_NS, "arxiv": ARXIV_NS}
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise ArxivCollectorError(f"arXiv RSS returned malformed XML: {exc}") from exc
+
+    allowed_types = {"new", "cross"} if include_cross_list else {"new"}
+    seen: set[str] = set()
+    result: list[str] = []
+    for entry in root.findall("atom:entry", namespaces):
+        announced_on = _rss_date(
+            _element_text(entry, "atom:published", namespaces),
+            timezone_name=timezone_name,
+        )
+        if announced_on != target_date:
+            continue
+        announce_type = _element_text(entry, "arxiv:announce_type", namespaces).lower()
+        if announce_type and announce_type not in allowed_types:
+            continue
+        raw_identifier = _element_text(entry, "atom:id", namespaces).rsplit("/", 1)[-1]
+        raw_identifier = raw_identifier.removeprefix("oai:arXiv.org:")
+        canonical_id = canonicalize_arxiv_id(raw_identifier)
+        if canonical_id and canonical_id not in seen:
+            seen.add(canonical_id)
+            result.append(canonical_id)
+    return result
+
+
 class ArxivCollector:
     """Fetch arXiv Atom pages with caching, retries, and a polite delay."""
 
@@ -132,6 +197,9 @@ class ArxivCollector:
         max_retries: int = 3,
         cache_dir: Path | None = None,
         cache_ttl_hours: int = 24,
+        rss_endpoint: str = ARXIV_RSS_URL,
+        rss_cache_ttl_minutes: int = 15,
+        api_id_batch_size: int = 20,
         user_agent: str = "PaperDaily/0.1 (+https://github.com/Cat-blizzard/PaperFlow)",
         requester: Callable[..., Any] | None = None,
         sleeper: Callable[[float], None] = time.sleep,
@@ -144,6 +212,9 @@ class ArxivCollector:
         self.max_retries = max(1, int(max_retries))
         self.cache_dir = Path(cache_dir).expanduser().resolve() if cache_dir else None
         self.cache_ttl = timedelta(hours=max(0, int(cache_ttl_hours)))
+        self.rss_endpoint = str(rss_endpoint).rstrip("/")
+        self.rss_cache_ttl = timedelta(minutes=max(0, int(rss_cache_ttl_minutes)))
+        self.api_id_batch_size = max(1, min(100, int(api_id_batch_size)))
         self.user_agent = user_agent
         self._requester = requester or requests.get
         self._sleeper = sleeper
@@ -154,11 +225,11 @@ class ArxivCollector:
         digest = hashlib.sha256(json.dumps(params, sort_keys=True).encode("utf-8")).hexdigest()
         return self.cache_dir / f"{digest}.xml"
 
-    def _read_cache(self, path: Path | None) -> str | None:
+    def _read_cache(self, path: Path | None, *, ttl: timedelta | None = None) -> str | None:
         if path is None or not path.exists():
             return None
         modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-        if datetime.now(timezone.utc) - modified > self.cache_ttl:
+        if datetime.now(timezone.utc) - modified > (ttl if ttl is not None else self.cache_ttl):
             return None
         return path.read_text(encoding="utf-8")
 
@@ -192,6 +263,30 @@ class ArxivCollector:
                 if attempt + 1 < self.max_retries:
                     self._sleeper(min(2 ** attempt, 8))
         raise ArxivCollectorError(f"arXiv request failed after {self.max_retries} attempts: {last_error}")
+
+    def _request_url(self, url: str, *, cache_key: dict[str, Any], ttl: timedelta) -> tuple[str, bool]:
+        cache_path = self._cache_path(cache_key)
+        cached = self._read_cache(cache_path, ttl=ttl)
+        if cached is not None:
+            return cached, True
+
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries):
+            try:
+                response = self._requester(
+                    url,
+                    headers={"User-Agent": self.user_agent},
+                    timeout=self.timeout_seconds,
+                )
+                response.raise_for_status()
+                text = str(response.text)
+                self._write_cache(cache_path, text)
+                return text, False
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt + 1 < self.max_retries:
+                    self._sleeper(min(2**attempt, 8))
+        raise ArxivCollectorError(f"arXiv RSS request failed after {self.max_retries} attempts: {last_error}")
 
     def fetch_window(self, start: date, end: date, categories: Iterable[str]) -> ArxivFetchResult:
         """Fetch all configured pages for an inclusive submitted-date window."""
@@ -240,6 +335,73 @@ class ArxivCollector:
             truncated=truncated,
         )
 
+    def fetch_announcements(
+        self,
+        target_date: date,
+        categories: Iterable[str],
+        *,
+        timezone_name: str = "Asia/Shanghai",
+        include_cross_list: bool = True,
+    ) -> ArxivFetchResult:
+        """Fetch one arXiv announcement batch from RSS, then hydrate IDs via API."""
+
+        normalized_categories = sorted({str(item).strip() for item in categories if str(item).strip()})
+        if not normalized_categories:
+            raise ValueError("at least one arXiv category is required")
+        rss_url = f"{self.rss_endpoint}/{' + '.join(normalized_categories).replace(' ', '')}"
+        rss_xml, rss_cached = self._request_url(
+            rss_url,
+            cache_key={"source": "arxiv_rss", "url": rss_url},
+            ttl=self.rss_cache_ttl,
+        )
+        announced_ids = _announcement_ids(
+            rss_xml,
+            target_date=target_date,
+            timezone_name=timezone_name,
+            include_cross_list=include_cross_list,
+        )
+        if not announced_ids:
+            raise ArxivAnnouncementNotReady(
+                f"arXiv RSS 尚未包含 {target_date.isoformat()} 的新公告；请在公告更新后重试。"
+            )
+
+        total_available = len(announced_ids)
+        selected_ids = announced_ids[: self.max_results]
+        network_requests = int(not rss_cached)
+        cache_hits = int(rss_cached)
+        papers_by_id: dict[str, dict[str, Any]] = {}
+        for offset in range(0, len(selected_ids), self.api_id_batch_size):
+            batch = selected_ids[offset : offset + self.api_id_batch_size]
+            params = {"id_list": ",".join(batch), "start": 0, "max_results": len(batch)}
+            xml_text, from_cache = self._request_page(params)
+            cache_hits += int(from_cache)
+            network_requests += int(not from_cache)
+            papers, _reported_total = _parse_feed(xml_text)
+            papers_by_id.update({paper["arxiv_id"]: paper for paper in papers if paper.get("arxiv_id")})
+            if offset + len(batch) < len(selected_ids) and not from_cache and self.request_delay_seconds:
+                self._sleeper(self.request_delay_seconds)
+
+        missing = [paper_id for paper_id in selected_ids if paper_id not in papers_by_id]
+        if missing:
+            raise ArxivCollectorError(
+                "arXiv API 未补齐 RSS 公告元数据；不会推进 watermark："
+                + ", ".join(missing[:5])
+            )
+        papers = [papers_by_id[paper_id] for paper_id in selected_ids]
+        for paper in papers:
+            paper["announcement_date"] = target_date.isoformat()
+            paper["source"] = "arxiv_rss"
+        return ArxivFetchResult(
+            papers=deduplicate_papers(papers),
+            window_start=target_date,
+            window_end=target_date,
+            total_available=total_available,
+            network_requests=network_requests,
+            cache_hits=cache_hits,
+            truncated=total_available > len(selected_ids),
+            source="rss_announcements",
+        )
+
     def fetch_by_id(self, arxiv_id: str) -> dict[str, Any] | None:
         """Fetch one paper by canonical arXiv identifier."""
 
@@ -258,6 +420,8 @@ class ArxivCollector:
 
 __all__ = [
     "ARXIV_API_URL",
+    "ARXIV_RSS_URL",
+    "ArxivAnnouncementNotReady",
     "ArxivCollector",
     "ArxivCollectorError",
     "ArxivFetchResult",
