@@ -1,619 +1,181 @@
-<div align="center">
+# PaperDaily
 
-# PaperFlow
+一个面向个人研究者的本地优先 arXiv Daily 工具：订阅研究话题，筛选每天新论文，保留英文原标题，生成中文短摘要，并在需要时用 Codex CLI 产出带证据位置的中文精读笔记。
 
-**Dynamic personalized scientific-paper recommendation, reading, and reporting.**
+这是 [Cat-blizzard/PaperFlow](https://github.com/Cat-blizzard/PaperFlow) 的 PaperDaily 分支。项目基于 [OpenRaiser/PaperFlow](https://github.com/OpenRaiser/PaperFlow) 开发，保留原项目的 MIT License 与上游署名；本 fork 的产品重心是 **arXiv 日报与论文精读**，而不是会议/期刊聚合、知识 Wiki 或用户画像系统。
 
-PaperFlow turns daily paper discovery into a closed-loop research workflow:
-build a profile, rank today's papers, read the useful ones, collect feedback,
-and adapt tomorrow's recommendations.
+## 能做什么
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/downloads/)
-[![Package](https://img.shields.io/badge/package-paperflow-2E7D32.svg)](https://github.com/OpenRaiser/PaperFlow/blob/main/pyproject.toml)
-[![HF Dataset](https://img.shields.io/badge/HF%20Dataset-OpenRaiser%2FPaperFlow-FFD21E.svg)](https://huggingface.co/datasets/OpenRaiser/PaperFlow)
-[![License: MIT](https://img.shields.io/badge/License-MIT-111111.svg)](https://github.com/OpenRaiser/PaperFlow/blob/main/LICENSE)
+- 只跟踪 arXiv：常规日报通过 arXiv RSS 获取最新公告，并用官方 API 补全元数据；历史补推使用官方 API 日期查询。
+- 按研究话题订阅：分类、短语、关键词、上下文词和负关键词共同筛选，`VLA`、`WAM` 等缩写会做语境消歧。
+- 输出日报卡片：英文原标题保持不变，显示 arXiv 分类、命中话题、中文短摘要、推荐理由和论文/PDF链接。
+- 生成中文短摘要：可用 DeepSeek 或其他 OpenAI 兼容文本 API；未配置真实 LLM 时明确回退到英文原摘要。
+- 控制重复：已推送论文默认去重；重复生成同一日期时会打开已有日报，而不是制造一个新的空日报。需要回看时可显式勾选“包含已推送论文”。
+- 记录反馈：感兴趣、不相关、稍后阅读、收藏和已读会影响后续排序。
+- Codex 精读：只在你点击后下载 PDF，生成 Markdown 中文阅读笔记，并为实验结论保留章节、页码或表格等证据位置。
+- 本地存储：配置、日报、反馈和笔记均保存在本机 YAML、SQLite 与 Markdown 中；飞书只是可选的后续输出渠道。
 
-![Personalized Recommendation](https://img.shields.io/badge/personalized-recommendation-2E7D32.svg)
-![Scientific Reading](https://img.shields.io/badge/scientific-reading-1565C0.svg)
-![Daily Digest](https://img.shields.io/badge/daily-paper%20digest-F9A825.svg)
-![Feedback Learning](https://img.shields.io/badge/feedback-learning-6A5ACD.svg)
-![Interest Drift](https://img.shields.io/badge/interest-drift-00897B.svg)
-![Feishu/Lark](https://img.shields.io/badge/Feishu%2FLark-bot-00A1E9.svg)
+## 工作流
 
-**Language**:
-[English](https://github.com/OpenRaiser/PaperFlow#readme) ·
-[简体中文](https://github.com/OpenRaiser/PaperFlow/blob/main/assets/README/README_CN.md) ·
-[日本語](https://github.com/OpenRaiser/PaperFlow/blob/main/assets/README/README_JA.md) ·
-[Español](https://github.com/OpenRaiser/PaperFlow/blob/main/assets/README/README_ES.md) ·
-[Français](https://github.com/OpenRaiser/PaperFlow/blob/main/assets/README/README_FR.md) ·
-[Português](https://github.com/OpenRaiser/PaperFlow/blob/main/assets/README/README_PT.md) ·
-[한국어](https://github.com/OpenRaiser/PaperFlow/blob/main/assets/README/README_KO.md)
-
-[Quick Start](#quick-start) | [Desktop Preview](#desktop-preview) | [Local GUI](#local-gui) |
-[GUI Preview](https://openraiser.github.io/PaperFlow/deployments/desktop/static/index.html?demo=1) |
-[CLI Usage](#cli-usage) |
-[PaperDaily MVP](docs/PAPERDAILY.md) |
-[Feedback Loop](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/feedback-loop.md) |
-[Feishu/Lark Bot](#feishu--lark-bot) |
-[PaperFlow-Bench](#paperflow-bench) | [Reproduce](https://github.com/OpenRaiser/PaperFlow/blob/main/experiments/REPRODUCE.md)
-
-<img src="https://github.com/user-attachments/assets/fd31a62b-00a4-4210-82cb-1ffd080de254" alt="PaperFlow personalized scientific reading banner" width="100%">
-
-</div>
-
----
-
-## Current Release
-
-This first public release is a **CLI + local browser GUI + optional
-Feishu/Lark bot** version. You can run PaperFlow entirely from the terminal,
-open a local GUI for interactive paper selection, or keep the Feishu/Lark
-webhook server alive for scheduled chat pushes.
-
-<table>
-  <tr>
-    <td><b>Input</b></td>
-    <td>Research profiles, papers, PDFs, homepages, Google Scholar pages</td>
-  </tr>
-  <tr>
-    <td><b>Output</b></td>
-    <td>Daily paper digests, reading reports, weekly profile reports</td>
-  </tr>
-  <tr>
-    <td><b>Runtime</b></td>
-    <td>Local Python CLI, local browser GUI, SQLite, optional Feishu/Lark webhook + ngrok</td>
-  </tr>
-  <tr>
-    <td><b>Benchmark</b></td>
-    <td>PaperFlow-Bench on HuggingFace, with public evaluation scripts</td>
-  </tr>
-</table>
-
-## PaperDaily MVP (this fork)
-
-This fork adds a local-first `paperdaily` CLI for topic-based arXiv tracking,
-missed-day catch-up, optional Chinese abstract summaries, Markdown digests,
-feedback, and evidence-grounded deep reading through Codex CLI or Claude Code.
-Feishu is optional; the default workflow stays in the terminal, SQLite, and
-local Markdown files. Real semantic ranking and Chinese summaries require a
-configured embedding/LLM provider—offline fallbacks remain rule-based and do
-not pretend to be semantic or translated output.
-
-See the Windows PowerShell quick start, current command surface, configuration,
-and security boundaries in **[docs/PAPERDAILY.md](docs/PAPERDAILY.md)**.
-
-## Desktop Preview
-
-PaperFlow now ships with an offline-first desktop browser GUI. It uses the same
-local SQLite state and backend workflows as the CLI, so the UI is not a static
-mock: paper pulls, feedback, reading reports, Wiki graph updates, and settings
-all route through the local backend.
-
-The embedded workflow demo shows the offline desktop loop end to end without
-storing large media files in the Git repository.
-
-<table width="100%">
-  <tr>
-    <th><p align="center">PaperFlow Desktop Workflow</p></th>
-  </tr>
-  <tr>
-    <td align="center" width="100%">
-      <a href="https://github.com/user-attachments/assets/ebfd979a-93f2-4140-9d4c-7bd64aa86b5e">
-        <img src="https://github.com/user-attachments/assets/c852c134-5ddb-478e-8a13-3fa313dcd812" alt="PaperFlow desktop workflow video preview" width="100%">
-      </a>
-      <br>
-      <a href="https://github.com/user-attachments/assets/ebfd979a-93f2-4140-9d4c-7bd64aa86b5e"><b>Watch the desktop workflow video</b></a>
-    </td>
-  </tr>
-</table>
-<sub><i>Demo: daily paper pull, feedback actions, deep reading, report review, cited Q&A, and settings.</i></sub>
-
-<br>
-
-<details>
-<summary>View desktop screenshots</summary>
-
-<table>
-  <tr>
-    <td width="50%">
-      <img src="https://github.com/user-attachments/assets/018aa646-41fa-4967-b4d4-6d6a54df51cf" alt="PaperFlow daily paper recommendation stream">
-      <br><b>Daily paper stream</b><br>
-      Date-aware pulls, source filters, candidate metrics, paper actions, and backend task state.
-    </td>
-    <td width="50%">
-      <img src="https://github.com/user-attachments/assets/a629cc1e-e26e-4878-9eb3-97565153b711" alt="PaperFlow local settings and source configuration">
-      <br><b>Local settings</b><br>
-      Provider keys, storage paths, paper-source modes, conference access, and export controls.
-    </td>
-  </tr>
-</table>
-
-</details>
-
-### Product Framework
-
-<img src="https://github.com/user-attachments/assets/60ff5a52-5d09-46c2-be0d-1933c19515b6" alt="PaperFlow product framework diagram" width="100%">
-
-The desktop loop is intentionally local: profile state, paper pushes, feedback,
-and reading reports stay on disk unless you explicitly enable external
-providers or Feishu/Lark export.
-
-## Why PaperFlow
-
-Scientific-paper recommendation is not a one-shot ranking problem. Real
-researchers ask a moving question: **what should I read today, and how should
-the system adapt tomorrow?**
-
-| Traditional paper alerts | PaperFlow |
-| --- | --- |
-| Static keyword or profile matching | Structured profile with feedback updates |
-| Same feed every day | Date-specific candidate pools and daily digest budget |
-| Recommendation only | Recommendation + reading report + feedback loop |
-| No explicit drift handling | Short-term and long-term interest drift modeling |
-| Hard to reproduce longitudinally | Public PaperFlow-Bench episodes and evaluator |
-
-## Core Capabilities
-
-| Capability | What it does |
-| --- | --- |
-| Profile bootstrapping | Builds scholarly profiles from text, PDFs, homepages, or Google Scholar pages |
-| Daily recommendation | Fetches arXiv, OpenReview, and journal papers, then ranks a personalized daily digest |
-| Reading reports | Generates personalized paper reports from metadata and PDF content |
-| Feedback learning | Updates the same profile from CLI, GUI, Feishu/Lark, selected, skipped, read, and natural-language feedback |
-| Local research Wiki | Ingests paper pushes, reports, citations, feedback, and profile signals into a queryable local graph |
-| Cited Wiki Q&A | Answers with local evidence when retrieval is needed, supports clickable citations and explicit `@`-style references |
-| Offline desktop GUI | Provides a local UI for daily pulls, feedback, report reading, Wiki graph inspection, Q&A, and settings |
-| Drift adaptation | Tracks short-window vs long-window interest movement across days |
-| Feishu/Lark bot | Sends daily pushes and weekly reports; routes chat feedback and PDF requests |
-| Benchmark tooling | Packages, downloads, predicts, and evaluates PaperFlow-Bench submissions |
-
-## Quick Start
-
-PaperFlow's daily flow has five steps. Steps 1-3 only run once; steps 4-5
-become your daily routine.
-
-```bash
-# 1. Install
-git clone https://github.com/OpenRaiser/PaperFlow.git
-cd PaperFlow
-pip install -e ".[all]"          # full install (or `pip install -e .` for the minimal CLI)
-
-# 2. Configure providers (start with no-download settings; see below)
-cp .env.example .env
-# edit .env to set PAPERFLOW_LLM_PROVIDER and, for production, an embedding backend
-
-# 3. Initialize runtime + create your user profile (REQUIRED)
-paperflow init
-paperflow doctor
-paperflow profile \
-  --user-id user_alice \
-  --natural-language "I work on LLM agents for scientific discovery, \
-literature mining, and automated paper reading."
-
-# 4. Daily push (run every morning, or as often as you like)
-paperflow daily --user-id user_alice
-
-# 5. Read selected papers (paper IDs come from the latest daily push)
-paperflow read 1 3 7 --user-id user_alice
-
-# Optional: use the local browser GUI for steps 4-5
-paperflow gui
+```text
+arXiv RSS / API
+        |
+研究话题召回 (分类 + 关键词 + 语境消歧)
+        |
+规则排序 + 可选语义排序 + 可选 LLM 重排 + 去重
+        |
+中文短摘要 / Markdown 日报 / 本地 GUI
+        |
+感兴趣、不相关、稍后阅读
+        |
+Codex CLI 精读 -> 带证据的中文阅读笔记
 ```
 
-> **Step 3 is mandatory.** `paperflow daily / read / feedback` all read the
-> profile created by `paperflow profile`. Skipping it means there's no
-> personalization signal to score against, so `paperflow read` has no push
-> to read from. See [Initialize a User Profile](#initialize-a-user-profile)
-> below for the four bootstrap methods (text / PDF / Google Scholar / homepage).
+## 快速开始（Windows PowerShell）
 
-### Offline smoke test (no API keys)
+需要 Python 3.10+、Git，以及可以访问 arXiv 的网络。
 
-```bash
-paperflow demo
+```powershell
+git clone https://github.com/Cat-blizzard/PaperFlow.git D:\PaperFlow
+Set-Location D:\PaperFlow
+
+py -3 -m venv .venv
+Set-ExecutionPolicy -Scope Process Bypass
+.\.venv\Scripts\Activate.ps1
+
+python -m pip install --upgrade pip
+pip install -e ".[all]"
+
+Copy-Item .env.example .env
+.\.venv\Scripts\paperdaily.exe init
+.\.venv\Scripts\paperdaily.exe doctor
 ```
 
-The demo uses deterministic mock/hash providers, so it does not need API keys
-or network access. Use it to confirm the install before configuring real
-providers.
+`doctor` 应显示当前使用的摘要、Embedding 与 Codex Provider。首次安装时即使没有 API Key 也可运行，但会使用 `mock` 摘要和 `hash` embedding，只适合验证流程，不能提供真正的中文摘要或语义排序。
 
-## Configure Providers
+## 配置模型
 
-Copy the environment template:
-
-```bash
-cp .env.example .env
-```
-
-Use the `PAPERFLOW_*` variables as the canonical configuration surface. A
-fresh install defaults to no-download embeddings so `paperflow demo` and setup
-checks are quick, but real recommendation quality needs a semantic embedding
-backend.
-
-### Option A: recommended production setup
-
-Use one OpenAI-compatible gateway for both generation and embeddings:
+编辑根目录 `.env`。默认模板已经将文本生成指向 DeepSeek 兼容接口；填入 Key 后，日报会生成中文短摘要。
 
 ```env
+# 中文短摘要与可选 LLM 重排：DeepSeek / OpenAI 兼容 API
 PAPERFLOW_LLM_PROVIDER=openai
-PAPERFLOW_LLM_MODEL=gpt-4o-mini
+PAPERFLOW_LLM_MODEL=deepseek-chat
+PAPERFLOW_LLM_API_KEY=your-deepseek-api-key
+PAPERFLOW_LLM_BASE_URL=https://api.deepseek.com
 
-PAPERFLOW_EMBED_PROVIDER=openai
-PAPERFLOW_EMBED_MODEL=text-embedding-3-small
-
-OPENAI_API_KEY=sk-...
-# OPENAI_BASE_URL=https://your-openai-compatible-gateway/v1
-```
-
-OpenAI-compatible gateways are supported through `OPENAI_BASE_URL`, including
-OpenAI, DashScope, Azure OpenAI, vLLM, and similar services. If credentials are
-missing or still look like placeholders, PaperFlow falls back to mock/hash
-providers where possible so local workflows remain testable.
-
-### Option B: no-download smoke test
-
-Use this for install checks, GUI demos, or classrooms where downloading model
-weights is not acceptable:
-
-```env
-PAPERFLOW_LLM_PROVIDER=mock
+# 首次使用可保留 hash；它不具备语义理解能力。
 PAPERFLOW_EMBED_PROVIDER=hash
 ```
 
-This mode is deterministic and fast, but the hash vectors do not encode real
-semantic similarity. It is not the recommended setting for evaluating
-recommendation quality.
-
-### Option C: high-quality local embeddings
-
-Use this only when the machine is allowed to download and cache local model
-weights:
+DeepSeek 文本 API 不提供 embedding。要启用语义排序，请另配一个 OpenAI Embeddings 兼容服务，或使用本地模型：
 
 ```env
-PAPERFLOW_EMBED_PROVIDER=sentence_transformers
+# 方案 A：独立 Embedding API
+PAPERFLOW_EMBED_PROVIDER=openai
 PAPERFLOW_EMBED_MODEL=BAAI/bge-m3
-PAPERFLOW_EMBED_DIMENSIONS=1024
+PAPERFLOW_EMBED_API_KEY=your-embedding-api-key
+PAPERFLOW_EMBED_BASE_URL=https://your-embedding-endpoint/v1
+
+# 方案 B：本地模型（首次会下载模型文件）
+# PAPERFLOW_EMBED_PROVIDER=sentence_transformers
+# PAPERFLOW_EMBED_MODEL=BAAI/bge-m3
 ```
 
-This local mode needs no embedding API key, but the first run downloads the
-model weights. `BAAI/bge-m3` is about 2.3GB, so do not use it for quick
-classroom demos or first-run installation checks.
-
-After changing providers, run:
-
-```bash
-paperflow doctor
-```
-
-`paperflow doctor` prints the resolved provider configuration. Runtime data is
-stored under `data/` and is ignored by Git.
-
-## Initialize a User Profile
-
-PaperFlow keeps **one profile per `user_id`**, and every other command
-(`daily`, `read`, `feedback`) reads from that profile. **You must create at
-least one profile before the first daily run** — otherwise `paperflow daily`
-has nothing to score against and `paperflow read` has no push to read from.
-
-You can bootstrap a profile from any of these four sources, or combine them:
-
-```bash
-# (a) Self-description in natural language (fastest)
-paperflow profile \
-  --user-id user_alice \
-  --natural-language "I work on LLM agents for scientific discovery, \
-literature mining, and automated paper reading."
-
-# (b) One or more papers you have written or care about
-paperflow profile --user-id user_alice --pdf /path/to/my-paper.pdf
-
-# (c) A Google Scholar profile (PaperFlow scrapes the public page)
-paperflow profile \
-  --user-id user_alice \
-  --scholar-url "https://scholar.google.com/citations?user=..."
-
-# (d) A personal lab or homepage
-paperflow profile \
-  --user-id user_alice \
-  --homepage-url "https://example.edu/~alice"
-```
-
-Repeated `paperflow profile` calls **merge** new signals into the existing
-profile by default. Use `--reset-existing` only when you want to rebuild it
-from scratch.
-
-Inspect the resulting profile any time with:
-
-```bash
-python scripts/show_profile.py user_alice
-```
-
-## Local GUI
-
-Start the local browser GUI with:
-
-```bash
-paperflow gui
-```
-
-To preview the interface without installing PaperFlow, open the GitHub Pages
-mock-data preview:
-[PaperFlow GUI Preview](https://openraiser.github.io/PaperFlow/deployments/desktop/static/index.html?demo=1).
-
-The GUI uses the same local SQLite database as the CLI. It is designed for the
-real daily workflow, not a standalone mock:
-
-- select a user profile and inspect the profile-derived direction summary
-- pull papers for today's date, or intentionally fetch a previous date window
-- keep long-running daily pulls in backend task state while the UI polls status
-- mark papers as precision-read, not interested, or later
-- submit feedback and update the local profile signal path
-- generate or reopen reading reports from paper cards
-- configure providers, source modes, storage paths, and export behavior
-
-The desktop GUI does not run background schedules. Scheduled Feishu/Lark
-delivery still uses `deployments/feishu/`.
-
-Useful options:
-
-```bash
-paperflow gui --port 8766
-paperflow gui --host 0.0.0.0 --no-browser
-```
-
-Detailed GUI notes are in
-[deployments/desktop/README.md](https://github.com/OpenRaiser/PaperFlow/blob/main/deployments/desktop/README.md).
-
-## CLI Usage
-
-```bash
-paperflow --help
-```
-
-| Command | Purpose |
-| --- | --- |
-| `paperflow init` | Create local runtime directories and SQLite tables |
-| `paperflow doctor` | Check dependencies, credentials, and runtime paths |
-| `paperflow demo` | Run an offline provider demo |
-| `paperflow profile` | Create or update a user profile from text, PDFs, Scholar, or homepage data |
-| `paperflow daily` | Generate a daily personalized paper push |
-| `paperflow read` | Generate a personalized reading report |
-| `paperflow feedback` | Record feedback for a previous push |
-| `paperflow gui` | Start the local browser GUI |
-| `paperflow eval` | Evaluate PaperFlow-Bench predictions |
-
-Generate a daily recommendation card without sending it:
-
-```bash
-paperflow daily \
-  --user-id user_role1 \
-  --days 1 \
-  --output data/daily_push.txt \
-  --dry-run
-```
-
-Generate reading reports from paper IDs shown in a previous push:
-
-```bash
-paperflow read 1 3 7 --user-id user_role1 --no-feishu
-```
-
-By default, `paperflow read` uses that user's latest push in
-`data/paperflow.db`. To read from a specific previous push:
-
-```bash
-paperflow read 1 3 7 --user-id user_role1 --push-id push_20260401_090000 --no-feishu
-```
-
-PDFs, reading-report Markdown, monthly reports, and Topic Index files can be
-saved directly into an Obsidian vault. Point all four export variables at the
-same upper-level folder:
-
-```env
-PAPERFLOW_PDF_DIR=/Users/mario/Documents/Obsidian Vault/Daily Note/Daily Note 2026
-PAPERFLOW_READING_REPORTS_DIR=/Users/mario/Documents/Obsidian Vault/Daily Note/Daily Note 2026
-PAPERFLOW_MONTHLY_REPORT_DIR=/Users/mario/Documents/Obsidian Vault/Daily Note/Daily Note 2026
-PAPERFLOW_TOPIC_INDEX_DIR=/Users/mario/Documents/Obsidian Vault/Daily Note/Daily Note 2026
-PAPERFLOW_STORAGE_ROLE_SUBDIR=true
-PAPERFLOW_STORAGE_CATEGORY_SUBDIR=true
-PAPERFLOW_STORAGE_MONTHLY_SUBDIR=true
-```
-
-Local exports are role-scoped by default. If `data/roles.json` maps `role1` to
-`user_role1`, then `--user-id user_role1` writes these folders:
-`role1/pdf/arXiv - May 2026/`, `role1/reading_reports/arXiv - May 2026/`,
-`role1/monthly_reports/`, and `role1/topic_index/`. Monthly report and Topic
-Index filenames also include the target month, for example
-`PaperFlow Monthly Report - role1 - 2026-05.md`.
-Set `PAPERFLOW_STORAGE_ROLE_SUBDIR=false` or
-`PAPERFLOW_STORAGE_CATEGORY_SUBDIR=false` only if you want a flatter legacy
-layout.
-
-Feishu/Lark document export is optional and separate from the GUI and CLI core.
-Configuration is in [docs/feishu-doc-export.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/feishu-doc-export.md).
-After configuring Feishu, CLI usage is:
-
-```bash
-paperflow read 1 --user-id user_role1
-paperflow read 1 --user-id user_role1 --folder-id <feishu_folder_token>
-```
-
-In the GUI, tick "同时尝试写入飞书文档" when generating a reading report.
-
-Record feedback:
-
-```bash
-paperflow feedback \
-  --user-id user_role1 \
-  --push-id push_20260401_090000 \
-  --reply "1, 3"
-```
-
-Feedback from CLI, GUI, and Feishu/Lark bot replies is stored in the same
-SQLite database and updates the same profile for that `user_id`. See
-[docs/feedback-loop.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/feedback-loop.md) for the full learning path.
-
-## Feishu / Lark Bot
-
-The Feishu/Lark integration is optional. Use it when you want PaperFlow to run
-as a chat bot with scheduled pushes and weekly reports.
-
-If you only want reading reports exported as Feishu/Lark docs, use
-[docs/feishu-doc-export.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/feishu-doc-export.md) instead; that path does
-not require ngrok or webhook callbacks.
-
-Add the Feishu/Lark and ngrok values to `.env`:
-
-```env
-FEISHU_APP_ID=
-FEISHU_APP_SECRET=
-FEISHU_VERIFICATION_TOKEN=
-FEISHU_USER_ID=
-
-NGROK_AUTHTOKEN=
-NGROK_DOMAIN=
-```
-
-Bind role chat IDs in `data/roles.json`, then start the local webhook server:
-
-```bash
-python deployments/feishu/webhook-server/start-with-ngrok.py
-```
-
-The script prints the public Request URL. Paste it into the Feishu/Lark event
-subscription page and enable `im.message.receive_v1`.
-
-Keep the process running if you want scheduled jobs:
-
-| Job | Default schedule |
-| --- | --- |
-| Daily paper push | 09:00, Asia/Shanghai |
-| Weekly report | Monday 10:00, Asia/Shanghai |
-
-Watch live logs:
+保存后重新启动 GUI 或再次执行：
 
 ```powershell
-Get-Content data/webhook_stderr.log -Wait
+.\.venv\Scripts\paperdaily.exe doctor
 ```
 
-Common chat commands:
+Codex 精读默认使用你本机已登录的 Codex CLI 额度，不读取或替代 `.env` 中的 DeepSeek Key。
 
-```text
-profile
-daily push
-weekly report
-1 3
-read 1
+## GUI 使用
+
+```powershell
+Set-Location D:\PaperFlow
+.\.venv\Scripts\paperflow.exe gui --port 8769
 ```
 
-Detailed setup:
-[docs/feishu-webhook-setup.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/feishu-webhook-setup.md).
+打开 <http://127.0.0.1:8769>，日常操作顺序如下：
 
-## PaperFlow-Bench
+1. 在左侧“研究话题”点击添加，只填写关键词即可，例如：`VLA, vision-language-action, embodied AI, robotic manipulation`。
+2. 在“检索与补推”选择日期范围。首次可先点“预估候选”，它不会写入日报或推进进度。
+3. 确认候选后点“生成日报”。同一个日期重复运行会复用已有日报，避免重复推送与空日报。
+4. 在日报卡片上打开论文/PDF，或标记“感兴趣”“稍后”“不相关”。
+5. 对值得深入看的论文点“Codex 精读”。完成后，笔记保存在 `data/output/notes/<arxiv-id>.md`。
 
-PaperFlow-Bench is published on HuggingFace:
-[OpenRaiser/PaperFlow](https://huggingface.co/datasets/OpenRaiser/PaperFlow).
+日报卡片会保留论文的英文原标题，中文仅用于摘要和推荐理由。
 
-Download:
+## CLI 使用
 
-```bash
-python experiments/benchmark/fetch_benchmark.py \
-  --output-dir data/PaperFlow-Bench
+不激活虚拟环境时，将下面的 `paperdaily` 替换为 `.\.venv\Scripts\paperdaily.exe`。
+
+```powershell
+# 查看当前话题、模型配置、下次待处理窗口
+paperdaily doctor
+paperdaily status
+
+# 先预估最近公告批次，不生成中文摘要、不写入正式日报
+paperdaily run --window latest --dry-run --limit 20
+
+# 生成最近公告批次的日报
+paperdaily run --window latest --limit 12
+
+# 补推最近 7 天，最多输出 30 篇
+paperdaily catchup --window 7d --limit 30
+
+# 查看和管理话题
+paperdaily topic list
+paperdaily topic show embodied-vla
+
+# 记录反馈
+paperdaily feedback 2607.08974 interested
+paperdaily feedback 2607.08974 irrelevant
+
+# 用本机 Codex CLI 精读指定论文
+paperdaily read 2607.08974 --provider codex
 ```
 
-Create a simple valid prediction file from pool order:
+常用文件位置：
 
-```bash
-python experiments/benchmark/make_benchmark_submission.py \
-  --benchmark-dir data/PaperFlow-Bench \
-  --output data/PaperFlow-Bench/example_predictions.jsonl
+| 内容 | 默认路径 |
+| --- | --- |
+| 主配置 | `data/paperdaily/config.yaml` |
+| 研究者空间配置 | `data/paperdaily/users/<user-id>.yaml` |
+| 本地数据库 | `data/paperflow.db` |
+| Markdown 日报 | `data/output/digests/` |
+| 中文精读笔记 | `data/output/notes/` |
+| PDF 与解析工作区 | `data/workspaces/<arxiv-id>/` |
+
+## 推荐逻辑
+
+arXiv 不提供统一、可靠的作者关键词字段。因此日报以论文标题、摘要与官方分类为主要输入：
+
+1. 分类决定宽召回范围，例如 `cs.RO`、`cs.AI`、`cs.CV`、`cs.LG`、`cs.CL`。
+2. 研究话题中的短语和关键词负责精确召回。
+3. 缩写需要机器人相关语境，降低 `VLA`、`WAM` 的误报。
+4. 可用 embedding 时加入话题语义相似度；可用 LLM 时只重排前一小批候选。
+5. MMR 负责降低日报中相似论文的重复度，历史反馈会影响排序。
+
+这意味着“抓取到论文但日报新增为 0”不一定是话题过严：它也可能表示论文已出现在该日期的日报中并被默认去重。GUI 会分别显示抓取、命中、已推送和新增数量。
+
+## 隐私与边界
+
+- 不要将 `.env`、API Key、Cookie 或本地数据库提交到 Git。
+- 中文短摘要与 LLM 重排只读取标题和摘要；全文 PDF 只会在你主动精读时处理。
+- 论文内容和 LaTeX 源码都视为不可信输入。Codex 精读使用受限工作区，模型输出经过结构校验后再写入笔记。
+- 本项目不是多用户在线服务。GUI 中的“研究者空间”仅用于本机隔离不同人的话题和阅读记录；部署到公网前必须自行增加身份认证。
+
+## 开发与测试
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\paperdaily -q
+node --check deployments\desktop\static\desktop.js
 ```
 
-Evaluate:
+## 上游与许可证
 
-```bash
-paperflow eval \
-  --benchmark-dir data/PaperFlow-Bench \
-  --predictions data/PaperFlow-Bench/example_predictions.jsonl \
-  --output data/PaperFlow-Bench/example_metrics.json
-```
-
-More benchmark details:
-
-- [docs/benchmark.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/benchmark.md)
-- [experiments/REPRODUCE.md](https://github.com/OpenRaiser/PaperFlow/blob/main/experiments/REPRODUCE.md)
-
-## Workflow
-
-```text
-research profile
-      |
-      v
-daily candidate pool  ->  scoring + drift adjustment  ->  paper digest
-      |                                                       |
-      v                                                       v
-arXiv / OpenReview / journals                         reading reports
-                                                              |
-                                                              v
-                                                     feedback + profile update
-                                                              |
-                                                              v
-                                                     tomorrow's recommendation
-```
-
-## Repository Layout
-
-```text
-PaperFlow/
-  paperflow/                 CLI and provider abstraction
-  agents/                    Core workflow agents
-  skills/                    Fetching, parsing, profile, and storage helpers
-  deployments/desktop/       Optional local browser GUI
-  deployments/feishu/        Optional Feishu/Lark bot deployment
-  experiments/               Benchmark and paper reproduction scripts
-  scripts/                   Operational utilities
-  config/                    Source, scoring, and direction configuration
-  docs/                      Setup and benchmark documentation
-  tests/                     Unit and integration tests
-```
-
-## Development Checks
-
-```bash
-pytest tests -q
-pytest experiments/tests -q
-```
-
-The GitHub Actions workflow runs the main test suite. Experiment tests are kept
-in `experiments/tests/` for benchmark and reproduction validation.
-
-## Documentation
-
-For a complete guide map, see [docs/README.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/README.md). The most common
-follow-ups are:
-
-- [docs/quickstart.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/quickstart.md) for the first local run
-- [docs/configuration.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/configuration.md) for environment variables and paths
-- [docs/feedback-loop.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/feedback-loop.md) for CLI / GUI / Feishu profile learning
-- [deployments/desktop/README.md](https://github.com/OpenRaiser/PaperFlow/blob/main/deployments/desktop/README.md) for local GUI behavior
-- [PaperFlow GUI Preview](https://openraiser.github.io/PaperFlow/deployments/desktop/static/index.html?demo=1) for a no-install UI preview
-- [docs/feishu-doc-export.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/feishu-doc-export.md) for Feishu document export
-- [docs/feishu-webhook-setup.md](https://github.com/OpenRaiser/PaperFlow/blob/main/docs/feishu-webhook-setup.md) for webhook + ngrok bot deployment
-
-## Citation
-
-If you use PaperFlow or PaperFlow-Bench in academic work, please cite:
-
-```bibtex
-@article{wang2026paperflow,
-  title={PaperFlow: Profiling, Recommending, and Adapting Across Daily Paper Streams},
-  author={Wang, Fuqiang and Tan, Song and Guo, Zheng and Fu, Jiaohao and Xu, Xinglong and Yu, Bihui and Dong, Jie and Sun, Zheng and Li, Siyuan and Wei, Jingxuan and others},
-  journal={arXiv preprint arXiv:2606.07454},
-  year={2026}
-}
-```
-
-The formal citation will be updated after the paper is published.
-
-## License
-
-PaperFlow is released under the MIT License. See [LICENSE](https://github.com/OpenRaiser/PaperFlow/blob/main/LICENSE).
+- Fork: [Cat-blizzard/PaperFlow](https://github.com/Cat-blizzard/PaperFlow)
+- Upstream: [OpenRaiser/PaperFlow](https://github.com/OpenRaiser/PaperFlow)
+- License: [MIT](LICENSE)
