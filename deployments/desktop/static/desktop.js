@@ -2330,6 +2330,9 @@
         .join(" · ");
       const reason = paper.recommendation_reason || (paper.matched_terms || []).join("、");
       const tags = paperDailyTags(paper);
+      const hjfyUrl = paper.arxiv_id
+        ? `https://hjfy.top/?q=${encodeURIComponent(`https://arxiv.org/abs/${paper.arxiv_id}`)}`
+        : "";
       return `
         <article class="paperdaily-paper-row" data-pd-arxiv-id="${escapeHtml(paper.arxiv_id)}">
           <div class="paperdaily-rank">${escapeHtml(String(paper.rank || index + 1))}</div>
@@ -2342,6 +2345,7 @@
             <div class="paperdaily-paper-links">
               <a href="${escapeHtml(paper.url || "")}" target="_blank" rel="noreferrer">论文</a>
               <a href="${escapeHtml(paper.pdf_url || "")}" target="_blank" rel="noreferrer">PDF</a>
+              ${hjfyUrl ? `<a href="${escapeHtml(hjfyUrl)}" target="_blank" rel="noopener noreferrer" data-pd-hjfy-link data-arxiv-id="${escapeHtml(paper.arxiv_id)}" title="打开 hjfy.top，并复制 arXiv ID">中文阅读</a>` : ""}
             </div>
           </div>
           <div class="paperdaily-paper-actions">
@@ -2528,6 +2532,26 @@
     });
     setPaperDailyTaskStatus(`已记录 ${arxivId} 的反馈：${action}。`);
     showFeedbackToast("success", "反馈已记录", "这会影响后续 PaperDaily 推荐。 ");
+  }
+
+  function copyPaperDailyArxivId(arxivId) {
+    const normalized = String(arxivId || "").trim();
+    if (!normalized) return;
+    if (!navigator.clipboard?.writeText) {
+      setPaperDailyTaskStatus("已打开外部中文阅读，但当前浏览器不支持自动复制 arXiv ID。", "error");
+      showFeedbackToast("warning", "未能复制 arXiv ID", "当前浏览器不支持剪贴板写入。");
+      return;
+    }
+    navigator.clipboard.writeText(normalized).then(
+      () => {
+        setPaperDailyTaskStatus(`已复制 arXiv ID：${normalized}。`);
+        showFeedbackToast("success", "已复制 arXiv ID", normalized);
+      },
+      () => {
+        setPaperDailyTaskStatus("已打开外部中文阅读，但浏览器拒绝复制 arXiv ID。", "error");
+        showFeedbackToast("warning", "未能复制 arXiv ID", "浏览器拒绝了剪贴板写入。");
+      }
+    );
   }
 
   async function loadPaperDailyNote(arxivId) {
@@ -6203,6 +6227,11 @@
       }, "更新研究话题");
     });
     $("pdDigestList")?.addEventListener("click", (event) => {
+      const hjfyLink = event.target.closest("[data-pd-hjfy-link]");
+      if (hjfyLink) {
+        copyPaperDailyArxivId(hjfyLink.dataset.arxivId);
+        return;
+      }
       const button = event.target.closest("[data-pd-paper-action]");
       if (!button) return;
       const arxivId = button.dataset.arxivId;
